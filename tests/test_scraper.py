@@ -8,8 +8,8 @@ from unittest.mock import Mock, patch, MagicMock
 import json
 from typing import Dict, List, Any
 
-# These will be imported from our main module once implemented
-# from scrape_movies import scrape_movies, format_message, send_telegram
+# Import from our main module
+from scrape_movies import scrape_movies, format_message, send_telegram, main
 
 
 class TestScrapeMovies:
@@ -17,32 +17,27 @@ class TestScrapeMovies:
 
     def test_scrape_movies_returns_dict(self):
         """Test that scrape_movies returns a dictionary with expected structure."""
-        # This test will fail until we implement the function
-        # result = scrape_movies()
-        # assert isinstance(result, dict)
-        # assert len(result) > 0
-        pytest.skip("Function not implemented yet")
+        result = scrape_movies()
+        assert isinstance(result, dict)
 
     def test_scrape_movies_has_correct_data_structure(self):
-        """Test that returned data has the correct nested structure."""
-        # result = scrape_movies()
-        # for date, movies in result.items():
-        #     assert isinstance(date, str)
-        #     assert isinstance(movies, dict)
-        #     for title, showtimes in movies.items():
-        #         assert isinstance(title, str)
-        #         assert isinstance(showtimes, list)
-        #         for showtime in showtimes:
-        #             assert isinstance(showtime, str)
-        pytest.skip("Function not implemented yet")
+        """Test that returned data has correct nested structure."""
+        result = scrape_movies()
+        for date, movies in result.items():
+            assert isinstance(date, str)
+            assert isinstance(movies, dict)
+            for title, showtimes in movies.items():
+                assert isinstance(title, str)
+                assert isinstance(showtimes, list)
+                for showtime in showtimes:
+                    assert isinstance(showtime, str)
 
-    @patch('scrape_movies.playwright')
+    @patch('scrape_movies.sync_playwright')
     def test_scrape_movies_handles_browser_errors(self, mock_playwright):
         """Test that browser errors are handled gracefully."""
-        # mock_playwright.chromium.launch.side_effect = Exception("Browser failed")
-        # with pytest.raises(Exception):
-        #     scrape_movies()
-        pytest.skip("Function not implemented yet")
+        mock_playwright.return_value.__enter__.side_effect = Exception("Browser failed")
+        with pytest.raises(Exception):
+            scrape_movies()
 
 
 class TestFormatMessage:
@@ -50,79 +45,76 @@ class TestFormatMessage:
 
     def test_format_message_returns_string(self):
         """Test that format_message returns a string."""
-        # test_data = {"Mon 24.11": {"Wicked": ["19:30 (Cinema 10, 2D OV)"]}}
-        # result = format_message(test_data)
-        # assert isinstance(result, str)
-        pytest.skip("Function not implemented yet")
+        test_data = {"Mon 24.11": {"Wicked": ["19:30 (Cinema 10, 2D OV)"]}}
+        result = format_message(test_data)
+        assert isinstance(result, str)
 
     def test_format_message_includes_all_data(self):
         """Test that formatted message includes all movie data."""
-        # test_data = {
-        #     "Mon 24.11": {
-        #         "Wicked": ["19:30 (Cinema 10, 2D OV)", "16:45 (Cinema 10, 2D OmU)"],
-        #         "Dune": ["20:00 (Cinema 5, 2D OV)"]
-        #     }
-        # }
-        # result = format_message(test_data)
-        # assert "Mon 24.11" in result
-        # assert "Wicked" in result
-        # assert "19:30 (Cinema 10, 2D OV)" in result
-        # assert "Dune" in result
-        pytest.skip("Function not implemented yet")
+        test_data = {
+            "Mon 24.11": {
+                "Wicked": ["19:30 (Cinema 10, 2D OV)", "16:45 (Cinema 10, 2D OmU)"],
+                "Dune": ["20:00 (Cinema 5, 2D OV)"]
+            }
+        }
+        result = format_message(test_data)
+        assert "Mon 24.11" in result
+        assert "Wicked" in result
+        assert "19:30 (Cinema 10, 2D OV)" in result
+        assert "Dune" in result
 
     def test_format_message_handles_empty_data(self):
         """Test that empty data is handled gracefully."""
-        # test_data = {}
-        # result = format_message(test_data)
-        # assert isinstance(result, str)
-        # assert "No movies found" in result
-        pytest.skip("Function not implemented yet")
+        test_data = {}
+        result = format_message(test_data)
+        assert isinstance(result, str)
+        assert "No movies found" in result
 
     def test_format_message_respects_telegram_limits(self):
         """Test that formatted message doesn't exceed Telegram limits."""
-        # test_data = {"Mon 24.11": {"Wicked": ["19:30 (Cinema 10, 2D OV)"] * 1000}}
-        # result = format_message(test_data)
-        # assert len(result) <= 4096  # Telegram message limit
-        pytest.skip("Function not implemented yet")
+        test_data = {"Mon 24.11": {"Wicked": ["19:30 (Cinema 10, 2D OV)"] * 1000}}
+        result = format_message(test_data)
+        assert len(result) <= 4096  # Telegram message limit
 
 
 class TestSendTelegram:
     """Test the Telegram notification functionality."""
 
     @patch('scrape_movies.requests.post')
+    @patch.dict('os.environ', {'TELEGRAM_BOT_TOKEN': 'test_token', 'TELEGRAM_CHAT_ID': 'test_chat'})
     def test_send_telegram_makes_api_call(self, mock_post):
         """Test that send_telegram makes correct API call."""
-        # mock_post.return_value.status_code = 200
-        # message = "Test message"
-        # result = send_telegram(message)
-        # mock_post.assert_called_once()
-        # assert result is True
-        pytest.skip("Function not implemented yet")
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = {"ok": True}
+        message = "Test message"
+        result = send_telegram(message)
+        mock_post.assert_called_once()
+        assert result is True
 
     @patch('scrape_movies.requests.post')
+    @patch.dict('os.environ', {'TELEGRAM_BOT_TOKEN': 'test_token', 'TELEGRAM_CHAT_ID': 'test_chat'})
     def test_send_telegram_handles_api_error(self, mock_post):
         """Test that API errors are handled properly."""
-        # mock_post.return_value.status_code = 400
-        # message = "Test message"
-        # result = send_telegram(message)
-        # assert result is False
-        pytest.skip("Function not implemented yet")
+        mock_post.return_value.status_code = 400
+        mock_post.return_value.json.return_value = {"ok": False, "error": "Bad request"}
+        message = "Test message"
+        result = send_telegram(message)
+        assert result is False
 
     @patch('scrape_movies.requests.post')
+    @patch.dict('os.environ', {'TELEGRAM_BOT_TOKEN': 'test_token', 'TELEGRAM_CHAT_ID': 'test_chat'})
     def test_send_telegram_handles_network_error(self, mock_post):
         """Test that network errors are handled properly."""
-        # mock_post.side_effect = Exception("Network error")
-        # message = "Test message"
-        # result = send_telegram(message)
-        # assert result is False
-        pytest.skip("Function not implemented yet")
+        mock_post.side_effect = Exception("Network error")
+        message = "Test message"
+        result = send_telegram(message)
+        assert result is False
 
+    @patch.dict('os.environ', {}, clear=True)
     def test_send_telegram_requires_env_vars(self):
         """Test that environment variables are required."""
-        # with patch.dict('os.environ', {}, clear=True):
-        #     with pytest.raises(Exception):
-        #         send_telegram("test")
-        pytest.skip("Function not implemented yet")
+        with pytest.raises(Exception):
+            send_telegram("test")
 
 
 class TestIntegration:
@@ -132,15 +124,14 @@ class TestIntegration:
     @patch('scrape_movies.scrape_movies')
     def test_full_workflow(self, mock_scrape, mock_send):
         """Test the complete scraping and notification workflow."""
-        # mock_scrape.return_value = {"Mon 24.11": {"Wicked": ["19:30 (Cinema 10, 2D OV)"]}}
-        # mock_send.return_value = True
+        mock_scrape.return_value = {"Mon 24.11": {"Wicked": ["19:30 (Cinema 10, 2D OV)"]}}
+        mock_send.return_value = True
         
-        # This would test the main() function
-        # result = main()
-        # assert result is True
-        # mock_scrape.assert_called_once()
-        # mock_send.assert_called_once()
-        pytest.skip("Integration test not implemented yet")
+        # Test the main() function
+        result = main()
+        assert result is True
+        mock_scrape.assert_called_once()
+        mock_send.assert_called_once()
 
 
 class TestDataValidation:

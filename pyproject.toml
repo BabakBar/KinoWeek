@@ -2,7 +2,7 @@
 name = "kinoweek"
 version = "0.1.0"
 description = "Astor Kino Notifier - Web scraping and Telegram notification system"
-authors = [{name = "KinoWeek", email = "noreply@example.com"}]
+authors = [{name = "Sia"}]
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
