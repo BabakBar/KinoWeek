@@ -8,8 +8,10 @@ from unittest.mock import Mock, patch, MagicMock
 import json
 from typing import Dict, List, Any
 
-# Import from our main module
-from scrape_movies import scrape_movies, format_message, send_telegram, main
+# Import from our new modular structure
+from src.kinoweek.scraper import scrape_movies
+from src.kinoweek.notifier import format_message, send_telegram, notify
+from src.kinoweek.main import run_scraper, main
 
 
 class TestScrapeMovies:
@@ -32,7 +34,7 @@ class TestScrapeMovies:
                 for showtime in showtimes:
                     assert isinstance(showtime, str)
 
-    @patch('scrape_movies.sync_playwright')
+    @patch('src.kinoweek.scraper.sync_playwright')
     def test_scrape_movies_handles_browser_errors(self, mock_playwright):
         """Test that browser errors are handled gracefully."""
         mock_playwright.return_value.__enter__.side_effect = Exception("Browser failed")
@@ -80,7 +82,7 @@ class TestFormatMessage:
 class TestSendTelegram:
     """Test the Telegram notification functionality."""
 
-    @patch('scrape_movies.requests.post')
+    @patch('src.kinoweek.notifier.requests.post')
     @patch.dict('os.environ', {'TELEGRAM_BOT_TOKEN': 'test_token', 'TELEGRAM_CHAT_ID': 'test_chat'})
     def test_send_telegram_makes_api_call(self, mock_post):
         """Test that send_telegram makes correct API call."""
@@ -91,7 +93,7 @@ class TestSendTelegram:
         mock_post.assert_called_once()
         assert result is True
 
-    @patch('scrape_movies.requests.post')
+    @patch('src.kinoweek.notifier.requests.post')
     @patch.dict('os.environ', {'TELEGRAM_BOT_TOKEN': 'test_token', 'TELEGRAM_CHAT_ID': 'test_chat'})
     def test_send_telegram_handles_api_error(self, mock_post):
         """Test that API errors are handled properly."""
@@ -101,7 +103,7 @@ class TestSendTelegram:
         result = send_telegram(message)
         assert result is False
 
-    @patch('scrape_movies.requests.post')
+    @patch('src.kinoweek.notifier.requests.post')
     @patch.dict('os.environ', {'TELEGRAM_BOT_TOKEN': 'test_token', 'TELEGRAM_CHAT_ID': 'test_chat'})
     def test_send_telegram_handles_network_error(self, mock_post):
         """Test that network errors are handled properly."""
@@ -120,15 +122,15 @@ class TestSendTelegram:
 class TestIntegration:
     """Integration tests for the complete workflow."""
 
-    @patch('scrape_movies.send_telegram')
-    @patch('scrape_movies.scrape_movies')
+    @patch('src.kinoweek.notifier.send_telegram')
+    @patch('src.kinoweek.scraper.scrape_movies')
     def test_full_workflow(self, mock_scrape, mock_send):
         """Test the complete scraping and notification workflow."""
         mock_scrape.return_value = {"Mon 24.11": {"Wicked": ["19:30 (Cinema 10, 2D OV)"]}}
         mock_send.return_value = True
         
         # Test the main() function
-        result = main()
+        result = run_scraper(local_only=True)
         assert result is True
         mock_scrape.assert_called_once()
         mock_send.assert_called_once()

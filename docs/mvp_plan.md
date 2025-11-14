@@ -39,17 +39,16 @@ TELEGRAM_CHAT_ID
 2. Navigate to cinema website
 3. Click date tabs, extract movies/showtimes
 4. Format as simple text message
-5. Send via Telegram
+5. Save the results to output folder
 6. Save JSON backup
 
 ## Success Criteria
 - Script runs without errors
 - Extracts real movie data
-- Sends Telegram message
-- Completes within 5 minutes
 
 ## Next Steps After MVP
-1. Add error handling
+0. Add error handling
+1- Setup telegram
 2. Create Docker container
 3. Deploy to Coolify
 4. Set up weekly schedule
