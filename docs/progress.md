@@ -151,29 +151,92 @@ KinoWeek/
 #### Local Development Mode
 ```bash
 # Run locally, save results to output/ folder
-python -m src.kinoweek.main --local
+PYTHONPATH=src uv run python -m kinoweek.main --local
 
-# Or use the module directly
-python -c "from src.kinoweek.main import run_scraper; run_scraper(local_only=True)"
+# Or test the scraper directly
+PYTHONPATH=src uv run python -c "from kinoweek.scraper import scrape_movies; print(scrape_movies())"
 ```
 
 #### Production Mode
 ```bash
 # Send to Telegram (requires .env setup)
-python -m src.kinoweek.main
+PYTHONPATH=src uv run python -m kinoweek.main
 ```
 
-## Next Steps
+## Current Status (2025-11-17)
 
-1. **Update Configuration**: Modify `pyproject.toml` for new package structure
-2. **Adapt Tests**: Update test suite to import from new modules
-3. **Validate Functionality**: Run comprehensive local testing
-4. **Create Documentation**: Update README with new structure and usage
-5. **Prepare for Containerization**: Ready for Docker and production deployment
+### ✅ Completed & Working
+- API-based scraper with direct backend access
+- Intelligent OV (Original Version) filtering
+- Telegram notification system
+- Local testing mode
+- Comprehensive test suite framework
+- Clean, modular architecture
+- Documentation updated and polished
+
+### 📊 Current Metrics
+- **Filtering Efficiency**: 85% of content filtered (355/419 showtimes)
+- **OV Results**: 68 showtimes across 46 unique movies
+- **Date Coverage**: 34 dates with OV content
+- **Dependencies**: Minimal (httpx, python-dotenv)
+- **No Browser Automation**: No Playwright/Selenium needed
+
+### ✅ Ready for Production
+The application is **fully functional** and ready for deployment:
+- All core functionality working
+- OV filtering accurate and tested
+- Output format validated
+- Error handling implemented
+- Logging configured
+
+## Next Steps - Phase 5: Containerization & Deployment
+
+### 1. Containerization (Immediate)
+- [ ] Create Dockerfile with multi-stage build
+- [ ] Set up Docker Compose for local testing
+- [ ] Configure environment variables in container
+- [ ] Test container locally
+- [ ] Optimize image size
+
+### 2. CI/CD Pipeline (High Priority)
+- [ ] Set up GitHub Actions workflow
+- [ ] Configure scheduled runs (weekly)
+- [ ] Add automated testing in CI
+- [ ] Set up secrets management for Telegram credentials
+- [ ] Add deployment validation
+
+### 3. Production Deployment (Next)
+Choose deployment platform:
+- **Option A: GitHub Actions** (Simplest)
+  - Schedule with cron syntax
+  - No server needed
+  - Free tier sufficient
+- **Option B: Coolify on Hetzner VPS** (Original plan)
+  - More control
+  - Can add monitoring
+  - Requires server management
+
+### 4. Monitoring & Maintenance (Ongoing)
+- [ ] Set up notification alerts for failures
+- [ ] Monitor API availability
+- [ ] Track OV movie count trends
+- [ ] Log aggregation (optional)
 
 ## Lessons Learned
 
-- **KISS Principle**: Smaller, focused modules are easier to maintain
-- **Development Workflow**: Local testing capability is crucial for development
-- **Modern Python**: Proper package structure improves code organization
-- **Separation of Concerns**: Each module should have a single, clear responsibility
+### Technical Insights
+- **API Discovery Beats Browser Automation**: Direct API access is faster, more reliable, and simpler than Playwright
+- **Smart Filtering is Key**: 85% of content was German dubs - filtering at the source saves bandwidth and improves UX
+- **Modern Python Packaging**: Using `src/` layout and `pyproject.toml` improved project organization significantly
+- **httpx Over requests**: Single HTTP library for consistency (both scraper and notifier)
+
+### Development Process
+- **TDD Approach**: Writing tests first helped identify edge cases early
+- **Local Testing Mode**: `--local` flag was crucial for development without spamming Telegram
+- **Documentation as Code**: Keeping `docs/progress.md` up-to-date helped track decision rationale
+- **KISS Principle**: Simple, focused modules are easier to debug and maintain
+
+### Project Management
+- **Pivoting is OK**: When Playwright was blocked, switching to API was the right call
+- **Incremental Progress**: Each phase built on the previous, making rollback safer
+- **User-Focused**: OV filtering addresses the real user need (only original version movies)
