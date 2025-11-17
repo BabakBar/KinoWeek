@@ -4,7 +4,7 @@ import os
 import json
 import logging
 from typing import Dict, List
-import requests
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -69,17 +69,18 @@ def send_telegram(message: str) -> bool:
     }
     
     try:
-        response = requests.post(url, json=data, timeout=30)
-        response.raise_for_status()
-        
-        result = response.json()
-        if result.get("ok"):
-            logger.info("Telegram message sent successfully")
-            return True
-        else:
-            logger.error(f"Telegram API error: {result}")
-            return False
-    
+        with httpx.Client() as client:
+            response = client.post(url, json=data, timeout=30)
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get("ok"):
+                logger.info("Telegram message sent successfully")
+                return True
+            else:
+                logger.error(f"Telegram API error: {result}")
+                return False
+
     except Exception as e:
         logger.error(f"Failed to send Telegram message: {e}")
         return False

@@ -72,18 +72,35 @@ KinoWeek/
   - [ ] Validate functionality with local file output - **Blocked by anti-scraping measures.**
   - [ ] Create testing documentation
 
-### ⚠️ Phase 4.5: Scraping Blocker Investigation (ON HOLD)
-- **Status**: 🔴 **Blocked**
-- **Date**: 2025-11-15
-- **Summary**: The `scraper.py` module is currently **non-functional**. The target website (`hannover.premiumkino.de`) has undergone a major redesign and now employs sophisticated anti-scraping measures.
+### ⚠️ Phase 4.5: Scraping Blocker Investigation (RESOLVED)
+- **Status**: ✅ **Resolved**
+- **Date**: 2025-11-15 (blocked) → 2025-11-17 (resolved)
+- **Summary**: The original Playwright-based scraper was blocked by anti-scraping measures. **Successfully resolved by switching to direct API calls.**
 - **Investigation Details**:
-  - The new website is a Single-Page Application (SPA) that requires JavaScript to render.
-  - Extensive debugging efforts were made using Playwright to adapt to the new structure.
-  - The scraper was updated to handle multiple dynamic elements, including a cookie consent dialog and an intro overlay.
-  - Despite successfully navigating these elements, the website still detects and blocks the automated browser from accessing the movie schedule data.
-- **Conclusion**: The website is actively preventing automated access. Bypassing this would require more advanced techniques (e.g., residential proxies, CAPTCHA solving, or deeper browser fingerprinting emulation) which are beyond the scope of the current implementation. The scraping functionality is on hold until a new strategy is developed.
+  - The new website is a Single-Page Application (SPA) that prevented Playwright scraping.
+  - The website was actively blocking automated browser access.
+- **Solution**: Discovered and implemented direct API access to `backend.premiumkino.de/v1/de/hannover/program`
+  - Much faster and more reliable than browser automation
+  - No anti-scraping issues
+  - Cleaner, simpler code
+  - Successfully filters for OV (Original Version) movies only
 
-### 📋 Phase 5: Containerization (PLANNED)
+### ✅ Phase 4.6: API-Based Scraper Implementation (COMPLETED)
+- **Status**: ✅ **Complete**
+- **Date**: 2025-11-17
+- **Achievements**:
+  - **API Discovery**: Found the backend API endpoint for movie data
+  - **Direct API Access**: Replaced Playwright with httpx for direct API calls
+  - **OV Filtering**: Implemented intelligent filtering to show only Original Version movies
+    - Filters out German-dubbed movies (355 out of 419 total showtimes)
+    - Keeps English, Japanese, Italian, Spanish, Russian, and other original language films
+    - Includes original versions with German subtitles (marked with "Untertitel:")
+  - **Results**: 68 OV showtimes across 46 unique movies and 34 dates
+  - **Dependency Cleanup**: Unified on httpx (removed requests/playwright dependencies)
+  - **End-to-End Testing**: Complete workflow verified working
+  - **Output Validation**: Confirmed OV-only filtering working correctly
+
+### 📋 Phase 5: Containerization (NEXT)
 - **Status**: 📋 Planned
 - **Next Phase**
 - **Tasks**:
@@ -96,23 +113,22 @@ KinoWeek/
 
 ### Module Responsibilities
 
-#### `scraper.py` (295 lines)
-- **Purpose**: Web scraping and data extraction
+#### `scraper.py` (105 lines)
+- **Purpose**: API-based data fetching and OV filtering
 - **Key Functions**:
-  - `scrape_movies()`: Main scraping orchestration
-  - `_handle_cookie_consent()`: Cookie banner handling
-  - `_extract_movies_from_page()`: Movie data extraction
-  - `_extract_showtimes()`: Showtime parsing
-  - `_extract_hall_info()`: Cinema hall detection
-  - `_extract_version_info()`: OV/OmU version detection
+  - `scrape_movies()`: Main API orchestration, fetches from backend.premiumkino.de
+  - `is_original_version()`: Smart filtering to identify OV vs. dubbed movies
+  - Filters out 85% of German-dubbed content automatically
+  - Returns only Original Version (OV) movies in various languages
 
-#### `notifier.py` (113 lines)
+#### `notifier.py` (148 lines)
 - **Purpose**: Message formatting and notifications
 - **Key Functions**:
   - `format_message()`: Human-readable message creation
-  - `send_telegram()`: Telegram Bot API integration
+  - `send_telegram()`: Telegram Bot API integration using httpx
   - `save_to_file()`: Local file output for development
   - `notify()`: Unified notification interface
+- **Updated**: Now uses httpx instead of requests for consistency
 
 #### `main.py` (48 lines)
 - **Purpose**: Application orchestration and CLI
