@@ -9,38 +9,93 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
-def format_message(schedule_data: Dict[str, Dict[str, List[str]]]) -> str:
+def format_message(schedule_data: Dict[str, Dict[str, Dict]]) -> str:
     """
     Format movie schedule data into a human-readable Telegram message.
-    
+
     Args:
-        schedule_data: Dictionary containing movie schedule information
-        
+        schedule_data: Dictionary containing movie schedule information with metadata
+
     Returns:
         Formatted message string
     """
     if not schedule_data:
         return "🎬 No movies found for this week."
-    
-    message_lines = ["🎬 *Astor Grand Cinema - OV Schedule*\n"]
-    
-    for date, movies in sorted(schedule_data.items()):
+
+    total_movies = 0
+    total_showtimes = 0
+
+    # Calculate totals first
+    for date, movies in schedule_data.items():
+        for title, movie_data in movies.items():
+            total_movies += 1
+            total_showtimes += len(movie_data['showtimes'])
+
+    # Start with header and summary
+    message_lines = [
+        "🎬 *Astor Grand Cinema - OV Movies*",
+        f"📊 {total_movies} films • {total_showtimes} showtimes • {len(schedule_data)} days\n"
+    ]
+
+    # Data is already sorted by date from scraper
+    for date, movies in schedule_data.items():
         message_lines.append(f"📅 *{date}*")
-        
-        for title, showtimes in sorted(movies.items()):
-            showtimes_str = "\n  • ".join(showtimes)
-            message_lines.append(f"🎭 *{title}*")
-            message_lines.append(f"  • {showtimes_str}")
-        
-        message_lines.append("")  # Empty line between dates
-    
+
+        for title, movie_data in sorted(movies.items()):
+            info = movie_data['info']
+            showtimes = movie_data['showtimes']
+
+            # Movie title with year
+            title_line = f"🎬 *{info.title}*"
+            if info.year:
+                title_line += f" ({info.year})"
+            message_lines.append(title_line)
+
+            # Movie metadata (duration, rating) - more compact
+            metadata_parts = []
+            if info.duration:
+                hours = info.duration // 60
+                mins = info.duration % 60
+                if hours > 0:
+                    metadata_parts.append(f"{hours}h{mins}m" if mins else f"{hours}h")
+                else:
+                    metadata_parts.append(f"{mins}m")
+
+            if info.rating:
+                metadata_parts.append(f"FSK{info.rating}")
+
+            # Showtimes - more compact format
+            showtime_strs = []
+            for showtime in showtimes:
+                # Simplify language display
+                version_display = showtime.version
+                version_display = version_display.replace("Sprache: ", "")
+                version_display = version_display.replace("Untertitel: ", "UT:")
+                # Make even more compact
+                version_display = version_display.replace("Englisch", "EN")
+                version_display = version_display.replace("Japanisch", "JP")
+                version_display = version_display.replace("Italienisch", "IT")
+                version_display = version_display.replace("Spanisch", "ES")
+                version_display = version_display.replace("Russisch", "RU")
+                version_display = version_display.replace("Deutsch", "DE")
+
+                showtime_strs.append(f"{showtime.time_str} ({version_display})")
+
+            times_line = "  ⏰ " + " • ".join(showtime_strs)
+            if metadata_parts:
+                message_lines.append(f"  _{' • '.join(metadata_parts)}_")
+            message_lines.append(times_line)
+            message_lines.append("")  # Empty line between movies
+
+        message_lines.append("─" * 35)  # Separator between dates
+
     message = "\n".join(message_lines).strip()
-    
+
     # Ensure message doesn't exceed Telegram limits
     if len(message) > 4096:
-        # Truncate message if too long
-        message = message[:4093] + "..."
-    
+        # Truncate message if too long and add note
+        message = message[:4050] + "\n\n... (truncated - too many showings)"
+
     return message
 
 
@@ -86,43 +141,69 @@ def send_telegram(message: str) -> bool:
         return False
 
 
-def save_to_file(message: str, schedule_data: Dict[str, Dict[str, List[str]]], output_dir: str = "output") -> None:
+def save_to_file(message: str, schedule_data: Dict[str, Dict[str, Dict]], output_dir: str = "output") -> None:
     """
     Save message and schedule data to local files for development testing.
-    
+
     Args:
         message: Formatted message string
-        schedule_data: Raw schedule data
+        schedule_data: Raw schedule data with movie metadata
         output_dir: Output directory path
     """
     try:
         # Create output directory if it doesn't exist
         os.makedirs(output_dir, exist_ok=True)
-        
+
         # Save formatted message
         message_file = os.path.join(output_dir, "latest_message.txt")
         with open(message_file, 'w', encoding='utf-8') as f:
             f.write(message)
-        
-        # Save raw schedule data as JSON
+
+        # Convert schedule data to JSON-serializable format
+        json_data = {}
+        for date, movies in schedule_data.items():
+            json_data[date] = {}
+            for title, movie_data in movies.items():
+                info = movie_data['info']
+                showtimes = movie_data['showtimes']
+
+                json_data[date][title] = {
+                    'metadata': {
+                        'duration': info.duration,
+                        'rating': info.rating,
+                        'year': info.year,
+                        'country': info.country,
+                        'genres': info.genres
+                    },
+                    'showtimes': [
+                        {
+                            'time': st.time_str,
+                            'version': st.version,
+                            'datetime': st.datetime.isoformat()
+                        }
+                        for st in showtimes
+                    ]
+                }
+
+        # Save structured schedule data as JSON
         json_file = os.path.join(output_dir, "schedule.json")
         with open(json_file, 'w', encoding='utf-8') as f:
-            json.dump(schedule_data, f, indent=2, ensure_ascii=False)
-        
+            json.dump(json_data, f, indent=2, ensure_ascii=False)
+
         logger.info(f"Results saved to {output_dir}/")
-        
+
     except Exception as e:
         logger.error(f"Failed to save results: {e}")
 
 
-def notify(schedule_data: Dict[str, Dict[str, List[str]]], local_only: bool = False) -> bool:
+def notify(schedule_data: Dict[str, Dict[str, Dict]], local_only: bool = False) -> bool:
     """
     Send notification via Telegram or save locally for development.
-    
+
     Args:
-        schedule_data: Movie schedule data
+        schedule_data: Movie schedule data with metadata
         local_only: If True, save to files instead of sending to Telegram
-        
+
     Returns:
         True if successful, False otherwise
     """
