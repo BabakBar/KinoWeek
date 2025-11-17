@@ -9,9 +9,9 @@ import json
 from typing import Dict, List, Any
 
 # Import from our new modular structure
-from src.kinoweek.scraper import scrape_movies
-from src.kinoweek.notifier import format_message, send_telegram, notify
-from src.kinoweek.main import run_scraper, main
+from kinoweek.scraper import scrape_movies
+from kinoweek.notifier import format_message, send_telegram, notify
+from kinoweek.main import run_scraper, main
 
 
 class TestScrapeMovies:
@@ -34,10 +34,10 @@ class TestScrapeMovies:
                 for showtime in showtimes:
                     assert isinstance(showtime, str)
 
-    @patch('src.kinoweek.scraper.sync_playwright')
-    def test_scrape_movies_handles_browser_errors(self, mock_playwright):
-        """Test that browser errors are handled gracefully."""
-        mock_playwright.return_value.__enter__.side_effect = Exception("Browser failed")
+    @patch('kinoweek.scraper.httpx.Client')
+    def test_scrape_movies_handles_api_errors(self, mock_client):
+        """Test that API errors are handled gracefully."""
+        mock_client.return_value.__enter__.return_value.get.side_effect = Exception("API failed")
         with pytest.raises(Exception):
             scrape_movies()
 
@@ -82,7 +82,7 @@ class TestFormatMessage:
 class TestSendTelegram:
     """Test the Telegram notification functionality."""
 
-    @patch('src.kinoweek.notifier.requests.post')
+    @patch('kinoweek.notifier.requests.post')
     @patch.dict('os.environ', {'TELEGRAM_BOT_TOKEN': 'test_token', 'TELEGRAM_CHAT_ID': 'test_chat'})
     def test_send_telegram_makes_api_call(self, mock_post):
         """Test that send_telegram makes correct API call."""
@@ -93,7 +93,7 @@ class TestSendTelegram:
         mock_post.assert_called_once()
         assert result is True
 
-    @patch('src.kinoweek.notifier.requests.post')
+    @patch('kinoweek.notifier.requests.post')
     @patch.dict('os.environ', {'TELEGRAM_BOT_TOKEN': 'test_token', 'TELEGRAM_CHAT_ID': 'test_chat'})
     def test_send_telegram_handles_api_error(self, mock_post):
         """Test that API errors are handled properly."""
@@ -103,7 +103,7 @@ class TestSendTelegram:
         result = send_telegram(message)
         assert result is False
 
-    @patch('src.kinoweek.notifier.requests.post')
+    @patch('kinoweek.notifier.requests.post')
     @patch.dict('os.environ', {'TELEGRAM_BOT_TOKEN': 'test_token', 'TELEGRAM_CHAT_ID': 'test_chat'})
     def test_send_telegram_handles_network_error(self, mock_post):
         """Test that network errors are handled properly."""
@@ -122,13 +122,13 @@ class TestSendTelegram:
 class TestIntegration:
     """Integration tests for the complete workflow."""
 
-    @patch('src.kinoweek.main.notify')
-    @patch('src.kinoweek.main.scrape_movies')
+    @patch('kinoweek.main.notify')
+    @patch('kinoweek.main.scrape_movies')
     def test_full_workflow(self, mock_scrape, mock_notify):
         """Test the complete scraping and notification workflow."""
         mock_scrape.return_value = {"Mon 24.11": {"Wicked": ["19:30 (Cinema 10, 2D OV)"]}}
         mock_notify.return_value = True
-        
+
         # Test the main() function
         result = run_scraper(local_only=False)
         assert result is True
@@ -143,7 +143,7 @@ class TestDataValidation:
         """Test validation of movie data structure."""
         # valid_data = {"Mon 24.11": {"Wicked": ["19:30 (Cinema 10, 2D OV)"]}}
         # invalid_data = {"invalid": "structure"}
-        
+
         # assert validate_movie_data(valid_data) is True
         # assert validate_movie_data(invalid_data) is False
         pytest.skip("Validation function not implemented yet")
