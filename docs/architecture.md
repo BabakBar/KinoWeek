@@ -11,35 +11,44 @@ The system follows a microservices architecture with clear separation of concern
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
 │   Scheduler     │───▶│   Scraper        │───▶│   Notifier      │
-│  (Coolify)      │    │  (Playwright)    │    │  (Telegram)     │
+│  (GitHub/Cron)  │    │  (httpx/API)     │    │  (Telegram)     │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
          │                       │                       │
          ▼                       ▼                       ▼
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Cron Job      │    │   Headless       │    │   Bot API       │
-│   (Weekly)      │    │   Browser        │    │   Integration   │
+│   Cron Job      │    │   Direct API     │    │   Bot API       │
+│   (Weekly)      │    │   Calls (HTTP)   │    │   Integration   │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
 ```
 
+**Architecture Note**: Current implementation uses direct API calls via httpx (not browser automation). This is faster, more reliable, and requires no headless browser infrastructure.
+
 ## Component Architecture
 
-### 1. Core Scraper Module (`scrape_movies.py`)
+### 1. Core Scraper Module (`scraper.py`)
 
-**Purpose**: Extract movie schedule data from the dynamic website
+**Purpose**: Extract movie schedule data directly from PremiumKino API
 
 **Key Components**:
-- **BrowserManager**: Handles Playwright browser lifecycle
-- **PageNavigator**: Manages page navigation and cookie handling
-- **DateTabProcessor**: Iterates through date tabs and extracts content
-- **MovieDataExtractor**: Parses movie information from HTML elements
-- **DataFormatter**: Converts raw data to structured formats
-- **TelegramNotifier**: Handles API communication with Telegram
+- **MovieInfo**: Data class for movie metadata (duration, rating, year, country, genres)
+- **Showtime**: Data class for individual showtime (datetime, time_str, version)
+- **is_original_version()**: Filter logic for OV vs dubbed content
+- **scrape_movies()**: Main API client using httpx
 
 **Data Flow**:
 ```
-Browser Launch → Page Load → Cookie Handling → Tab Discovery → 
-Tab Iteration → Content Extraction → Data Structuring → 
-Format & Notify → Cleanup
+API Request (httpx) → JSON Response → Parse Movies & Genres →
+Filter OV Performances → Build MovieInfo Objects →
+Chronological Sort → Return Structured Schedule
+```
+
+**Implementation Details**:
+```python
+# Direct API access - no browser needed
+api_url = "https://backend.premiumkino.de/v1/de/hannover/program"
+with httpx.Client() as client:
+    response = client.get(api_url, headers=headers)
+    data = response.json()
 ```
 
 ### 2. Container Layer (`Dockerfile`)
@@ -62,21 +71,33 @@ Format & Notify → Cleanup
 
 ### Input Data Sources
 ```
-Primary Source: https://hannover.premiumkino.de/programm/originalfassung
-├── Date Tabs (Dynamic)
-├── Movie Listings (Per Day)
-├── Showtime Details (Per Movie)
-└── Metadata (Hall, Version, Time)
+Primary Source: https://backend.premiumkino.de/v1/de/hannover/program
+├── movies[]          # Metadata: title, duration, rating, year, country, genreIds
+├── performances[]    # Showtimes: begin ISO timestamp, language information
+└── genres[]          # Lookup table for genre IDs → names
 ```
 
 ### Internal Data Structure
 ```python
 schedule_data = {
-    "date_string": {  # e.g., "Mon 24.11"
-        "movie_title": [  # e.g., "Wicked: Part 2"
-            "time (hall, version)",  # e.g., "19:30 (Cinema 10, 2D OV)"
-            "time (hall, version)",  # e.g., "16:45 (Cinema 10, 2D OmU)"
-        ]
+    "Mon 24.11.": {
+        "Wicked: Part 2": {
+            "info": MovieInfo(
+                title="Wicked: Part 2",
+                duration=113,
+                rating=12,
+                year=2024,
+                country="US",
+                genres=["Fantasy", "Adventure"],
+            ),
+            "showtimes": [
+                Showtime(
+                    datetime=datetime(2024, 11, 24, 19, 30),
+                    time_str="19:30",
+                    version="Sprache: Englisch, Untertitel: Deutsch",
+                )
+            ],
+        }
     }
 }
 ```
@@ -95,14 +116,14 @@ schedule_data = {
 - **Response**: Exponential backoff retry (max 3 attempts)
 - **Fallback**: Send error notification via Telegram
 
-#### 2. Website Structure Changes
-- **Detection**: Element not found, unexpected HTML structure
-- **Response**: Graceful degradation, partial data extraction
-- **Notification**: Alert about potential website updates
+#### 2. API Schema Changes
+- **Detection**: Missing JSON fields, unexpected data structure, KeyError exceptions
+- **Response**: Graceful degradation, log schema changes, partial data extraction
+- **Notification**: Alert about potential API updates requiring code changes
 
-#### 3. Browser Automation Failures
-- **Detection**: Playwright timeout, JavaScript errors
-- **Response**: Browser restart, retry with fresh instance
+#### 3. HTTP Request Failures
+- **Detection**: httpx timeout, connection errors, HTTP status codes
+- **Response**: Retry with exponential backoff (recommended enhancement)
 - **Logging**: Detailed error context for debugging
 
 #### 4. Telegram API Failures
@@ -119,7 +140,7 @@ schedule_data = {
 ```
 Level 1: Retry with same configuration (immediate)
 Level 2: Retry with backoff (exponential)
-Level 3: Restart component (browser, connection)
+Level 3: Restart component (HTTP client, connection)
 Level 4: Graceful failure with notification
 ```
 
@@ -128,16 +149,16 @@ Level 4: Graceful failure with notification
 ### Test Pyramid Structure
 
 #### 1. Unit Tests (70%)
-- **Data Extraction Logic**: Mock HTML parsing
+- **Data Extraction Logic**: Mock httpx responses with representative JSON payloads
 - **Data Formatting**: Input/output validation
 - **Telegram Integration**: API call mocking
 - **Error Handling**: Exception scenarios
 
 #### 2. Integration Tests (20%)
-- **Playwright Workflow**: Full browser automation
-- **Website Interaction**: Real page navigation
+- **API Integration**: End-to-end flow with recorded API fixtures
+- **Data Parsing**: JSON schema handling and OV filtering
 - **End-to-End Flow**: Complete scraping cycle
-- **API Communication**: Real Telegram bot integration
+- **Telegram Communication**: Real Telegram bot integration
 
 #### 3. System Tests (10%)
 - **Container Execution**: Docker environment testing
@@ -146,8 +167,8 @@ Level 4: Graceful failure with notification
 - **Failure Scenarios**: Network interruption testing
 
 ### Test Data Management
-- **Mock HTML**: Representative website snapshots
-- **Test Fixtures**: Known movie schedule data
+- **Mock API Payloads**: Captured JSON responses for deterministic tests
+- **Test Fixtures**: Known movie metadata and performance combinations
 - **Environment Isolation**: Separate test database/chat
 - **CI/CD Integration**: Automated test execution
 
@@ -171,7 +192,7 @@ Level 4: Graceful failure with notification
 - **HTTPS Only**: Encrypted communication
 - **Certificate Validation**: Proper SSL verification
 - **Rate Limiting**: Respect website policies
-- **User Agent Spoofing**: Legitimate browser identification
+- **User Agent Headers**: Standard browser identification for API calls
 
 #### 4. Data Protection
 - **Input Validation**: Sanitize all extracted data
@@ -184,10 +205,10 @@ Level 4: Graceful failure with notification
 ### Optimization Strategies
 
 #### 1. Scraping Performance
-- **Parallel Processing**: Concurrent tab processing where possible
-- **Selective Waiting**: Targeted waits vs. fixed delays
-- **Resource Management**: Efficient browser memory usage
-- **Connection Reuse**: Persistent browser sessions
+- **Efficient API Calls**: Single API request fetches all data (no pagination needed)
+- **In-Memory Processing**: Fast JSON parsing and data transformation
+- **Resource Management**: Efficient HTTP client usage via context managers
+- **Connection Reuse**: HTTP connection pooling via httpx.Client context manager
 
 #### 2. Container Performance
 - **Layer Caching**: Optimize Docker build times
@@ -314,8 +335,8 @@ Alert Conditions:
 ## Risk Assessment and Mitigation
 
 ### High-Risk Areas
-1. **Website Dependencies**: Structural changes may break scraper
-   - **Mitigation**: Robust selectors, monitoring alerts, quick updates
+1. **API Schema Changes**: Backend contract shifts may break parsing
+   - **Mitigation**: Schema validation, monitoring alerts, quick updates
 
 2. **Third-party APIs**: Telegram Bot API reliability
    - **Mitigation**: Retry logic, fallback notifications, API monitoring
@@ -335,17 +356,25 @@ Alert Conditions:
 ## Technology Stack Justification
 
 ### Core Choices
-- **Python 3.13+**: Modern features, strong ecosystem, performance
-- **Playwright**: Superior headless browser automation, reliable JS handling
-- **Docker**: Containerization consistency, deployment portability
-- **Coolify**: Existing infrastructure, integrated deployment pipeline
-- **Telegram**: Immediate notification, mobile-friendly, API reliability
+- **Python 3.13+**: Modern features, strong ecosystem, type hints, performance
+- **httpx**: Modern HTTP client with HTTP/2 support, async capability, clean API
+- **Direct API Access**: Backend API discovered, eliminating need for browser automation
+- **GitHub Actions / Coolify**: Flexible deployment options, cron scheduling
+- **Telegram**: Immediate notification, mobile-friendly, reliable Bot API
+- **uv**: Fast, modern Python package installer and environment manager
+
+### Architecture Evolution
+- **Initial Plan**: Playwright-based browser automation for scraping HTML
+- **Current Implementation**: Direct API calls to `backend.premiumkino.de`
+- **Rationale**: API access is faster, more reliable, requires less infrastructure (no headless browser)
+- **Benefits**: Reduced dependencies, faster execution, simpler deployment, easier testing
 
 ### Alternative Considerations
-- **Scrapy/Selenium**: Rejected due to JS handling limitations
+- **Scrapy/Selenium**: Not needed - direct API access available
+- **requests**: Rejected in favor of httpx (modern, better features)
 - **Kubernetes**: Overkill for current scale requirements
 - **Email Notifications**: Less immediate than mobile messaging
-- **Serverless Functions**: Limited for browser automation requirements
+- **Serverless Functions**: Viable option but GitHub Actions simpler for weekly cron
 
 ## Implementation Roadmap
 

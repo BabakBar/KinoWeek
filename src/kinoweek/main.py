@@ -1,6 +1,7 @@
 """Main orchestration module for KinoWeek scraper."""
 
 import logging
+import os
 import sys
 from typing import Dict, List
 
@@ -19,16 +20,46 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def validate_environment(local_only: bool) -> None:
+    """
+    Validate required environment variables at startup.
+
+    Fails fast if environment variables are missing when sending to Telegram.
+
+    Args:
+        local_only: If True, skip validation (running in local test mode)
+
+    Raises:
+        SystemExit: If required environment variables are missing
+    """
+    if local_only:
+        return
+
+    missing = []
+    if not os.getenv("TELEGRAM_BOT_TOKEN"):
+        missing.append("TELEGRAM_BOT_TOKEN")
+    if not os.getenv("TELEGRAM_CHAT_ID"):
+        missing.append("TELEGRAM_CHAT_ID")
+
+    if missing:
+        logger.error(f"❌ Missing required environment variables: {', '.join(missing)}")
+        logger.error("Set these in .env file or export them before running")
+        sys.exit(1)
+
+
 def run_scraper(local_only: bool = False) -> bool:
     """
     Run the complete scraping and notification workflow.
-    
+
     Args:
         local_only: If True, save results locally instead of sending to Telegram
-        
+
     Returns:
         True if successful, False otherwise
     """
+    # Validate environment before proceeding
+    validate_environment(local_only)
+
     try:
         logger.info("🚀 Starting Astor Kino scraper")
         
