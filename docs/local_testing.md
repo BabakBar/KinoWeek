@@ -1,236 +1,240 @@
 # KinoWeek Local Testing Guide
 
 ## Overview
-This guide explains how to test the refactored KinoWeek scraper locally before moving to production containerization.
+This guide explains how to test the KinoWeek API-based scraper locally before deploying to production.
 
 ## Prerequisites
 - Python 3.13+
 - uv package manager
-- Playwright browser binaries installed
 
 ## Installation & Setup
 
-Setting up the project involves creating a virtual environment, installing dependencies, and downloading the necessary browser binaries for Playwright.
+1. **Install Dependencies**
+   ```bash
+   # Install all dependencies from uv.lock
+   uv sync --dev
+   ```
 
-1.  **Create Environment & Install Dependencies**
+2. **Set Up Environment Variables** (Optional for local testing)
+   ```bash
+   # Copy the template
+   cp .env.example .env
 
-    This project uses `uv` to manage dependencies. The following command will create a virtual environment, and install all required main and development packages from the `uv.lock` file.
-
-    ```bash
-    # Create the virtual environment and install all dependencies
-    uv sync --dev
-    ```
-
-2.  **Install Playwright Browsers**
-
-    Playwright requires separate browser binaries to function. After installing the Python packages, run the following command to download them:
-
-    ```bash
-    # Download and install browsers (Chromium, Firefox, WebKit)
-    uv run playwright install
-    ```
-    *Note: This step is only required once, unless you update the Playwright package.*
-
-3.  **Set Up Environment Variables**
-
-    For notifications to work, you need to provide Telegram API credentials.
-
-    ```bash
-    # Copy the environment variable template
-    cp .env.example .env
-    ```
-    Then, edit the `.env` file and add your `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`.
+   # Edit .env with your Telegram credentials (only needed for Telegram testing)
+   # TELEGRAM_BOT_TOKEN=your_bot_token_here
+   # TELEGRAM_CHAT_ID=your_chat_id_here
+   ```
 
 ## Local Testing
 
-### Method 1: Command Line Interface
+### Quick Test (No Telegram)
 ```bash
-# Run locally - saves results to output/ folder
-python -m src.kinoweek.main --local
-
-# Run with full Telegram integration (requires .env setup)
-python -m src.kinoweek.main
+# Test locally - saves results to output/ folder
+PYTHONPATH=src uv run python -m kinoweek.main --local
 ```
 
-### Method 2: Programmatic Usage
-```python
-from src.kinoweek.main import run_scraper
+This will:
+- Fetch movie data from the API
+- Filter for OV (Original Version) movies only
+- Save formatted message to `output/latest_message.txt`
+- Save JSON data to `output/schedule.json`
+- Create log file `kinoweek.log`
 
-# Test locally (no Telegram)
+### Test with Telegram (Requires .env)
+```bash
+# Send actual Telegram notification
+PYTHONPATH=src uv run python -m kinoweek.main
+```
+
+### Programmatic Testing
+```python
+from kinoweek.main import run_scraper
+from kinoweek.scraper import scrape_movies
+from kinoweek.notifier import format_message
+
+# Test scraper only
+data = scrape_movies()
+print(f"Found {len(data)} dates with OV movies")
+
+# Test full workflow locally
 success = run_scraper(local_only=True)
 
-# Test with Telegram (requires env vars)
+# Test with Telegram
 success = run_scraper(local_only=False)
-```
-
-### Method 3: Module-Specific Testing
-```python
-# Test scraping only
-from src.kinoweek.scraper import scrape_movies
-data = scrape_movies()
-
-# Test message formatting only
-from src.kinoweek.notifier import format_message, notify
-message = format_message(data)
-notify(data, local_only=True)
 ```
 
 ## Expected Output
 
-When running locally (`--local` flag), the scraper creates:
-
 ### output/latest_message.txt
-Contains the formatted Telegram message:
+Formatted Telegram message with OV movies:
 ```
 🎬 *Astor Grand Cinema - OV Schedule*
 
-📅 *Mon 24.11*
+📅 *Mon 17.11.*
+🎭 *Sneak Preview (OV)*
+  • 20:30 (Sprache: Englisch)
 🎭 *Wicked*
-  • 19:30 (Cinema 10, 2D OV)
-  • 16:45 (Cinema 10, 2D OmU)
+  • 19:45 (Sprache: Englisch)
+
+📅 *Fri 21.11.*
+🎭 *Wicked: Teil 2*
+  • 16:45 (Sprache: Englisch, Untertitel: Deutsch)
+  • 19:50 (Sprache: Englisch)
 ```
 
 ### output/schedule.json
-Contains raw structured data:
+Raw structured data:
 ```json
 {
-  "Mon 24.11": {
-    "Wicked": [
-      "19:30 (Cinema 10, 2D OV)",
-      "16:45 (Cinema 10, 2D OmU)"
+  "Mon 17.11.": {
+    "Sneak Preview (OV)": ["20:30 (Sprache: Englisch)"],
+    "Wicked": ["19:45 (Sprache: Englisch)"]
+  },
+  "Fri 21.11.": {
+    "Wicked: Teil 2": [
+      "16:45 (Sprache: Englisch, Untertitel: Deutsch)",
+      "19:50 (Sprache: Englisch)"
     ]
   }
 }
 ```
 
-### kinoweek.log
-Detailed execution logs with timestamps and status information.
-
-## Testing Different Scenarios
-
-### 1. Normal Operation
-- Website loads successfully
-- Movies are found and parsed
-- Results saved to output/ folder
-- Exit code: 0
-
-### 2. No Movies Found
-- Website loads but no movies available
-- Empty JSON saved
-- "No movies found" message created
-- Exit code: 0 (successful run, just no data)
-
-### 3. Network Issues
-- Connection timeout or DNS failure
-- Exception logged
-- Exit code: 1 (failure)
-
-### 4. Website Structure Changes
-- Selectors don't match
-- Warning logged, empty results returned
-- Exit code: 0 (graceful handling)
+### Current Results
+- **34 dates** with OV movies
+- **46 unique** OV movies
+- **68 OV showtimes** total
+- **355 German-dubbed** showtimes filtered out
 
 ## Validation Steps
 
-1. **Check output files are created:**
+1. **Verify Output Files**
    ```bash
-   ls -la output/
+   ls -lh output/
    # Should show: latest_message.txt, schedule.json
    ```
 
-2. **Verify message format:**
+2. **Check Message Format**
    ```bash
-   head output/latest_message.txt
-   # Should show properly formatted markdown with emojis
+   head -30 output/latest_message.txt
    ```
 
-3. **Check JSON structure:**
+3. **Validate JSON**
    ```bash
-   cat output/schedule.json
-   # Should show valid JSON with expected structure
+   cat output/schedule.json | python -m json.tool
    ```
 
-4. **Review logs:**
+4. **Review Logs**
    ```bash
    tail -20 kinoweek.log
-   # Should show INFO level messages without errors
    ```
 
-## Integration Testing
+## Testing Scenarios
 
-### Test Suite
+### ✅ Normal Operation
+- API responds successfully
+- OV movies found and filtered
+- Results saved to output/
+- Exit code: 0
+
+### ⚠️ No OV Movies Found
+- API responds but no OV movies available
+- Empty schedule saved
+- "No movies found" message created
+- Exit code: 0
+
+### ❌ Network Issues
+- API connection timeout or failure
+- Exception logged with details
+- Exit code: 1 (failure)
+
+## OV Filtering Verification
+
+The scraper filters for **Original Version** movies only:
+
+**✅ Included (OV):**
+- English language films (`Sprache: Englisch`)
+- Japanese films with subtitles (`Sprache: Japanisch, Untertitel: Deutsch`)
+- Italian operas with subtitles (`Sprache: Italienisch, Untertitel: Deutsch`)
+- Any film with `Untertitel:` (German subtitles on original audio)
+
+**❌ Excluded (Dubbed):**
+- German dubbed films (`Sprache: Deutsch` without `Untertitel:`)
+
+**Verify filtering:**
 ```bash
-# Run all tests
-pytest tests/ -v
-
-# Run specific test categories
-pytest tests/test_scraper.py::TestScrapeMovies -v
-pytest tests/test_scraper.py::TestFormatMessage -v
-pytest tests/test_scraper.py::TestSendTelegram -v
-pytest tests/test_scraper.py::TestIntegration -v
+# Check that output only contains OV movies
+grep "Sprache: Deutsch" output/schedule.json | grep -v "Untertitel"
+# Should return nothing (all German-only dubbed versions filtered out)
 ```
 
-### Mock Testing
-The test suite includes comprehensive mocking for:
-- Playwright browser automation
-- Telegram API calls
-- Environment variables
-- Network requests
+## Running Tests
+
+```bash
+# Install package in editable mode
+uv pip install -e .
+
+# Run all tests
+uv run pytest tests/ -v
+
+# Run specific test class
+uv run pytest tests/test_scraper.py::TestScrapeMovies -v
+
+# Run with coverage
+uv run pytest tests/ -v --cov=kinoweek
+```
 
 ## Common Issues & Solutions
 
-### Issue: Unicode Encoding Errors
-**Symptom:** Emoji characters cause logging errors on Windows
-**Solution:** Already fixed with UTF-8 encoding in log handlers
-
 ### Issue: Module Import Errors
-**Symptom:** `ModuleNotFoundError: No module named 'src'`
-**Solution:** Run from project root directory
+**Symptom:** `ModuleNotFoundError: No module named 'kinoweek'`
+**Solution:** Use `PYTHONPATH=src` or install with `uv pip install -e .`
 
-### Issue: Playwright Browser Not Found
-**Symptom:** Browser launch fails with an "Executable doesn't exist" error.
-**Solution:** The browser binaries need to be installed. Run `uv run playwright install`.
+### Issue: API Connection Failure
+**Symptom:** `httpx.RequestError` or timeout
+**Solution:** Check network connection, API may be temporarily down
 
-### Issue: No Data Extracted
-**Symptom:** Empty results despite website having content
-**Solution:** Check website structure, selectors may need updating
-
-## Next Steps for Production
-
-After local testing is successful:
-
-1. **Containerization Preparation:**
-   - Docker configuration ready
-   - Environment variables documented
-   - Logging configuration optimized
-
-2. **Production Deployment:**
-   - Set up Telegram bot credentials in `.env`
-   - Configure scheduling (cron/CI)
-   - Monitor logs and error handling
-
-3. **Monitoring & Maintenance:**
-   - Watch `kinoweek.log` for issues
-   -定期检查输出文件格式
-   - Update selectors if website changes
+### Issue: No OV Movies Found
+**Symptom:** Empty output despite movies existing
+**Solution:** Verify OV filtering logic, check API response format
 
 ## Development Workflow
 
 ```bash
-# 1. Make changes to code
+# 1. Make code changes
+
 # 2. Test locally
-python -m src.kinoweek.main --local
+PYTHONPATH=src uv run python -m kinoweek.main --local
 
-# 3. Run tests
-pytest tests/ -v
+# 3. Verify output
+head output/latest_message.txt
+cat output/schedule.json | python -m json.tool | head -20
 
-# 4. Check output
-ls output/ && head output/latest_message.txt
+# 4. Run tests
+uv pip install -e . && uv run pytest tests/ -v
 
-# 5. Review logs
-tail -10 kinoweek.log
+# 5. Check logs
+tail -15 kinoweek.log
 
-# 6. Ready for containerization
+# 6. Commit and push when ready
 ```
 
-This local testing setup ensures the refactored code works correctly before moving to production deployment.
+## Next Steps for Production
+
+After successful local testing:
+
+1. **Containerization** (Phase 5)
+   - Create Dockerfile
+   - Set up Docker Compose
+   - Configure environment variables
+
+2. **Deployment**
+   - Deploy to Coolify or GitHub Actions
+   - Set up weekly cron schedule
+   - Configure Telegram bot credentials
+
+3. **Monitoring**
+   - Set up logging aggregation
+   - Monitor for API changes
+   - Track notification delivery
+
+See `docs/progress.md` for implementation roadmap.

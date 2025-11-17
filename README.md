@@ -1,22 +1,30 @@
 # KinoWeek - Astor Kino Notifier
 
-Automated web scraping system for Astor Grand Cinema Hannover Original Version (OV) movie schedules with Telegram notifications.
+Automated API-based scraper for Astor Grand Cinema Hannover **Original Version (OV)** movie schedules with Telegram notifications.
+
+## Features
+
+- ✅ **Smart OV Filtering**: Automatically filters for Original Version movies only
+- 🚀 **Fast API Access**: Direct API calls (no browser automation needed)
+- 📱 **Telegram Integration**: Weekly notifications with formatted movie schedules
+- 🧪 **Local Testing Mode**: Test without sending Telegram messages
+- 🎯 **Accurate**: Filters out 85% of German-dubbed content, keeping only OV films
 
 ## Quick Start
 
 ```bash
-# Install dependencies with uv
+# Install dependencies
 uv sync --dev
-
-# Install Playwright browsers
-uv run playwright install
 
 # Set up environment variables
 cp .env.example .env
 # Edit .env with your Telegram bot token and chat ID
 
-# Run the scraper
-uv run python scrape_movies.py
+# Test locally (saves to output/ directory)
+PYTHONPATH=src uv run python -m kinoweek.main --local
+
+# Run with Telegram notifications
+PYTHONPATH=src uv run python -m kinoweek.main
 ```
 
 ## Environment Variables
@@ -24,18 +32,40 @@ uv run python scrape_movies.py
 ```bash
 TELEGRAM_BOT_TOKEN=your_bot_token_here
 TELEGRAM_CHAT_ID=your_chat_id_here
+LOG_LEVEL=INFO  # Optional
 ```
 
 ## Development
 
 ```bash
-# Run tests
-uv run pytest
+# Run tests (package installation required)
+uv pip install -e .
+uv run pytest tests/ -v
 
-# Run with coverage
-uv run pytest --cov=scrape_movies
+# Test the scraper directly
+PYTHONPATH=src uv run python -c "from kinoweek.scraper import scrape_movies; print(scrape_movies())"
+
+# Check output files
+cat output/latest_message.txt
+cat output/schedule.json
 ```
+
+## How It Works
+
+1. **Fetches** movie data from `backend.premiumkino.de` API
+2. **Filters** for Original Version (OV) movies:
+   - Includes: English, Japanese, Italian, Spanish, Russian films
+   - Includes: Original versions with German subtitles
+   - Excludes: German-dubbed movies (355 of 419 total showtimes filtered out)
+3. **Formats** into readable Telegram message
+4. **Sends** weekly notification or saves locally for testing
+
+## Results
+
+Current output: **68 OV showtimes** across **46 unique movies** and **34 dates**
 
 ## Deployment
 
-Deploy using Coolify with scheduled tasks (weekly execution).
+Ready for deployment using Coolify or GitHub Actions with scheduled cron jobs (weekly execution).
+
+See `docs/progress.md` for implementation details and `docs/local_testing.md` for testing guide.
