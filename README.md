@@ -78,10 +78,11 @@ KinoWeek uses a **plugin-based architecture** for event sources. Each source is 
    - Includes: EN, JP, IT, ES, RU + films with German subtitles
    - Timeframe: Next 7 days
 
-2. **Concert Venues** (Big Events)
-   - Sources: ZAG Arena, Swiss Life Hall, Capitol Hannover
-   - Content: Major concerts and shows
-   - Purpose: "Planning horizon" for big events
+2. **Concert Venues** (Live Music)
+   - **Large Venues**: ZAG Arena, Swiss Life Hall, Capitol Hannover
+   - **Cultural Centers**: Faust, Pavillon, MusikZentrum
+   - **Clubs**: Béi Chéz Heinz
+   - Content: Concerts, festivals, live music events
    - Timeframe: Events beyond 7 days (on the radar)
 
 ### How It Works
@@ -98,9 +99,13 @@ KinoWeek uses a **plugin-based architecture** for event sources. Each source is 
 │   (Auto-discovered plugins) │
 ├─────────────────────────────┤
 │  • astor_hannover (cinema)  │
-│  • zag_arena (concert)      │
-│  • swiss_life_hall (concert)│
+│  • bei_chez_heinz (concert) │
 │  • capitol_hannover (concert)│
+│  • faust_hannover (concert) │
+│  • musikzentrum (concert)   │
+│  • pavillon (concert)       │
+│  • swiss_life_hall (concert)│
+│  • zag_arena (concert)      │
 └────────┬────────────────────┘
          │
          ▼
@@ -193,9 +198,13 @@ src/kinoweek/
 │   ├── cinema/       # Cinema sources
 │   │   └── astor.py  # Astor Grand Cinema
 │   └── concerts/     # Concert venue sources
-│       ├── zag_arena.py
+│       ├── bei_chez_heinz.py
+│       ├── capitol.py
+│       ├── faust.py
+│       ├── musikzentrum.py
+│       ├── pavillon.py
 │       ├── swiss_life_hall.py
-│       └── capitol.py
+│       └── zag_arena.py
 ├── notifier.py       # Telegram notification & orchestration
 ├── formatting.py     # Message formatting helpers & language mappings
 ├── output.py         # OutputManager & movie grouping logic
@@ -233,10 +242,18 @@ Ready for GitHub Actions with scheduled workflows.
 
 ## Current Status
 
-- **Astor Movies**: Fully working (57 OV showtimes, ~27 this week)
-- **ZAG Arena**: Fully working (9 concerts)
-- **Swiss Life Hall**: Fully working (10 concerts)
-- **Capitol Hannover**: Fully working (10 concerts)
+**8 Sources Active** (1 cinema + 7 concert venues):
+
+| Source | Type | Events | Notes |
+|--------|------|--------|-------|
+| Astor Grand Cinema | Cinema | ~56 | OV movies via API |
+| Béi Chéz Heinz | Club | ~3 | Punk/indie/metal |
+| Capitol Hannover | Large | ~10 | HC-Kartenleger |
+| Faust | Cultural | ~12 | Livemusik category |
+| MusikZentrum | Medium | ~16 | JSON-LD data |
+| Pavillon | Cultural | ~20 | World music focus |
+| Swiss Life Hall | Large | ~10 | HC-Kartenleger |
+| ZAG Arena | Arena | ~9 | WPEM plugin |
 
 All 26 tests passing. End-to-end workflow verified.
 
