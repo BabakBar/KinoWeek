@@ -17,7 +17,7 @@ from bs4 import BeautifulSoup
 from kinoweek.models import Event
 from kinoweek.config import (
     ASTOR_API_URL,
-    STAATSTHEATER_ICAL_URL,
+    STAATSTHEATER_CALENDAR_URL,
     CONCERT_SOURCES,
     IGNORE_KEYWORDS,
     REQUEST_TIMEOUT,
@@ -156,10 +156,10 @@ def scrape_astor_movies() -> List[Event]:
 
 def scrape_staatstheater_events(start_date: datetime, end_date: datetime) -> List[Event]:
     """
-    Scrape opera/ballet events from Staatstheater Hannover via iCal feed.
+    Scrape opera/ballet events from Staatstheater Hannover via HTML calendar.
 
-    Note: The iCal feed may not be publicly available. This function will
-    gracefully fail and return an empty list if the feed is not accessible.
+    The calendar page uses client-side rendering, but we can still extract
+    visible event data from the initial HTML load.
 
     Args:
         start_date: Start of date range to fetch
@@ -171,46 +171,99 @@ def scrape_staatstheater_events(start_date: datetime, end_date: datetime) -> Lis
     events = []
 
     try:
-        logger.info(f"Fetching Staatstheater events from {STAATSTHEATER_ICAL_URL}")
+        logger.info(f"Fetching Staatstheater events from {STAATSTHEATER_CALENDAR_URL}")
+        headers = {"User-Agent": USER_AGENT}
+
         with httpx.Client() as client:
-            response = client.get(STAATSTHEATER_ICAL_URL, timeout=REQUEST_TIMEOUT, follow_redirects=True)
+            response = client.get(STAATSTHEATER_CALENDAR_URL, timeout=REQUEST_TIMEOUT, follow_redirects=True, headers=headers)
             response.raise_for_status()
-            calendar = Calendar(response.text)
+            soup = BeautifulSoup(response.text, 'html.parser')
 
-        for ical_event in calendar.events:
-            # Convert ics datetime to Python datetime
-            event_date = ical_event.begin.datetime
+        # Find event elements
+        # The page uses article.event or similar structure
+        event_items = soup.select('article.event, .event-item, article')
 
-            # Filter by date range
-            if not (start_date <= event_date <= end_date):
+        if not event_items:
+            logger.warning("No event items found on Staatstheater page")
+            return events
+
+        for item in event_items:
+            try:
+                # Extract title
+                title_elem = item.select_one('h2, h3, h4, .title, .event-title')
+                if not title_elem:
+                    continue
+                title = title_elem.get_text(strip=True)
+
+                # Filter by keywords
+                if should_filter_event(title):
+                    logger.debug(f"Filtering out: {title}")
+                    continue
+
+                # Extract date - try multiple selectors
+                date_elem = item.select_one('time, .date, .event-date, .datetime')
+                if not date_elem:
+                    continue
+
+                date_str = date_elem.get('datetime') or date_elem.get_text(strip=True)
+
+                # Parse date (try multiple formats)
+                event_date = None
+                for fmt in [
+                    "%Y-%m-%dT%H:%M:%S",
+                    "%Y-%m-%d",
+                    "%d.%m.%Y",
+                    "%d.%m.%Y %H:%M",
+                ]:
+                    try:
+                        event_date = datetime.strptime(date_str.strip(), fmt)
+                        break
+                    except ValueError:
+                        continue
+
+                if not event_date:
+                    # Try parsing German date formats like "Fr, 22.11.2025 19:30"
+                    import re
+                    date_match = re.search(r'(\d{2})\.(\d{2})\.(\d{4})\s*(\d{2}):(\d{2})', date_str)
+                    if date_match:
+                        day, month, year, hour, minute = date_match.groups()
+                        event_date = datetime(int(year), int(month), int(day), int(hour), int(minute))
+                    else:
+                        logger.debug(f"Could not parse date: {date_str}")
+                        continue
+
+                # Filter by date range
+                if not (start_date <= event_date <= end_date):
+                    continue
+
+                # Extract venue
+                venue_elem = item.select_one('.venue, .location, .event-venue')
+                venue = venue_elem.get_text(strip=True) if venue_elem else "Staatstheater Hannover"
+
+                # Extract URL
+                link_elem = item.select_one('a')
+                event_url = link_elem.get('href') if link_elem else STAATSTHEATER_CALENDAR_URL
+                if event_url.startswith('/'):
+                    event_url = f"https://staatstheater-hannover.de{event_url}"
+
+                event = Event(
+                    title=title,
+                    date=event_date,
+                    venue=venue,
+                    url=event_url,
+                    category="culture",
+                    metadata={},
+                )
+                events.append(event)
+
+            except Exception as e:
+                logger.debug(f"Error parsing Staatstheater event item: {e}")
                 continue
-
-            # Filter by keywords
-            if should_filter_event(ical_event.name):
-                logger.debug(f"Filtering out: {ical_event.name}")
-                continue
-
-            # Extract metadata
-            metadata = {
-                'description': ical_event.description or '',
-                'location': ical_event.location or '',
-            }
-
-            event = Event(
-                title=ical_event.name,
-                date=event_date,
-                venue=ical_event.location or "Staatstheater Hannover",
-                url=ical_event.url or "https://www.staatstheater-hannover.de/",
-                category="culture",
-                metadata=metadata,
-            )
-            events.append(event)
 
         logger.info(f"Found {len(events)} culture events from Staatstheater")
 
     except httpx.RequestError as e:
-        logger.error(f"Staatstheater iCal request failed: {e}")
-        # Don't raise - allow other scrapers to continue
+        logger.error(f"Staatstheater request failed: {e}")
         logger.warning("Continuing without Staatstheater events")
     except Exception as e:
         logger.error(f"Staatstheater scraping failed: {e}")
@@ -219,14 +272,12 @@ def scrape_staatstheater_events(start_date: datetime, end_date: datetime) -> Lis
     return events
 
 
-def scrape_hannover_concerts(limit: int = 5) -> List[Event]:
+def scrape_hannover_concerts(limit: int = 10) -> List[Event]:
     """
     Scrape big concert/event listings from configured concert venues.
 
     This scraper fetches the "next big things" - major concerts and events
     that are worth knowing about months in advance.
-
-    Note: Currently disabled by default. Enable specific venues in config.py
 
     Args:
         limit: Maximum number of upcoming events to return (default: 5)
@@ -245,82 +296,168 @@ def scrape_hannover_concerts(limit: int = 5) -> List[Event]:
     for source in enabled_sources:
         try:
             logger.info(f"Fetching concerts from {source['name']}: {source['url']}")
+            headers = {"User-Agent": USER_AGENT}
+
             with httpx.Client() as client:
-                response = client.get(source['url'], timeout=REQUEST_TIMEOUT, follow_redirects=True)
+                response = client.get(source['url'], timeout=REQUEST_TIMEOUT, follow_redirects=True, headers=headers)
                 response.raise_for_status()
                 soup = BeautifulSoup(response.text, 'html.parser')
 
-            # Find event listings
-            # Note: This selector may need adjustment based on actual site structure
-            # Common patterns: div.event, article.concert, li.event-item, etc.
-            event_items = soup.select('.event-item, .concert-item, article.event, div.event')
+            # Use venue-specific selectors
+            selectors = source.get('selectors', {})
+            source_name = source['name']
 
-            if not event_items:
-                # Fallback: try finding by semantic HTML
-                event_items = soup.select('article, .card, .listing-item')
-                logger.debug(f"Using fallback selector, found {len(event_items)} items")
+            if source_name == "ZAG Arena":
+                event_items = soup.select(selectors.get('event', '.wpem-event-layout-wrapper'))
 
-            for item in event_items[:limit]:
-                try:
-                    # Extract title
-                    title_elem = item.select_one('h2, h3, .title, .event-title, .concert-title')
-                    if not title_elem:
-                        continue
-                    title = title_elem.get_text(strip=True)
-
-                    # Filter by keywords
-                    if should_filter_event(title):
-                        logger.debug(f"Filtering out: {title}")
-                        continue
-
-                    # Extract date
-                    date_elem = item.select_one('.date, .event-date, time, .datetime')
-                    if not date_elem:
-                        # Try data-date attribute
-                        date_str = item.get('data-date')
-                        if not date_str:
+                for item in event_items[:limit]:
+                    try:
+                        # Title is in h3.wpem-heading-text
+                        title_elem = item.select_one('.wpem-heading-text')
+                        if not title_elem:
                             continue
-                    else:
-                        date_str = date_elem.get('datetime') or date_elem.get_text(strip=True)
+                        title = title_elem.get_text(strip=True)
 
-                    # Parse date (try multiple formats)
-                    event_date = None
-                    for fmt in ["%Y-%m-%d", "%d.%m.%Y", "%Y-%m-%dT%H:%M:%S"]:
-                        try:
-                            event_date = datetime.strptime(date_str, fmt)
-                            break
-                        except ValueError:
+                        if should_filter_event(title):
                             continue
 
-                    if not event_date:
-                        logger.debug(f"Could not parse date: {date_str}")
+                        # Date is split into day and month divs
+                        date_day_elem = item.select_one('.wpem-date')
+                        date_month_elem = item.select_one('.wpem-month')
+                        date_time_elem = item.select_one('.wpem-event-date-time-text')
+
+                        if not (date_day_elem and date_month_elem):
+                            continue
+
+                        day_str = date_day_elem.get_text(strip=True)
+                        month_str = date_month_elem.get_text(strip=True).rstrip('.')
+
+                        # Get full date from date-time element (e.g., "20.11.2025")
+                        if date_time_elem:
+                            date_time_str = date_time_elem.get_text(strip=True)
+                            import re
+                            # Extract date in format "20.11.2025" and optionally time
+                            date_match = re.search(r'(\d{2})\.(\d{2})\.(\d{4})', date_time_str)
+                            if date_match:
+                                day, month, year = date_match.groups()
+                                # Try to find time too
+                                time_match = re.search(r'(\d{1,2}):(\d{2})', date_time_str)
+                                if time_match:
+                                    hour, minute = time_match.groups()
+                                    event_date = datetime(int(year), int(month), int(day), int(hour), int(minute))
+                                else:
+                                    event_date = datetime(int(year), int(month), int(day), 20, 0)
+                            else:
+                                # Fallback: use current year
+                                month_map = {
+                                    'jan': 1, 'feb': 2, 'mär': 3, 'mar': 3, 'apr': 4, 'mai': 5, 'may': 5,
+                                    'jun': 6, 'jul': 7, 'aug': 8, 'sep': 9, 'okt': 10, 'oct': 10,
+                                    'nov': 11, 'dez': 12, 'dec': 12
+                                }
+                                month = month_map.get(month_str.lower(), 1)
+                                event_date = datetime(2025, month, int(day_str), 20, 0)
+                        else:
+                            # No date-time element, use day and month only
+                            month_map = {
+                                'jan': 1, 'feb': 2, 'mär': 3, 'mar': 3, 'apr': 4, 'mai': 5, 'may': 5,
+                                'jun': 6, 'jul': 7, 'aug': 8, 'sep': 9, 'okt': 10, 'oct': 10,
+                                'nov': 11, 'dez': 12, 'dec': 12
+                            }
+                            month = month_map.get(month_str.lower(), 1)
+                            event_date = datetime(2025, month, int(day_str), 20, 0)
+
+                        # Link is in the main anchor tag
+                        link_elem = item.select_one('a.wpem-event-action-url')
+                        if not link_elem:
+                            continue
+                        event_url = link_elem.get('href')
+                        if not event_url.startswith('http'):
+                            event_url = f"https://www.zag-arena-hannover.de{event_url}"
+
+                        event = Event(
+                            title=title,
+                            date=event_date,
+                            venue=source_name,
+                            url=event_url,
+                            category="radar",
+                            metadata={},
+                        )
+                        events.append(event)
+
+                    except Exception as e:
+                        logger.debug(f"Error parsing {source_name} event: {e}")
                         continue
 
-                    # Extract venue
-                    venue_elem = item.select_one('.venue, .location, .event-venue')
-                    venue = venue_elem.get_text(strip=True) if venue_elem else source['name']
+            elif source_name in ["Swiss Life Hall", "Capitol Hannover"]:
+                # Both use the same "hc-kartenleger" card system
+                event_items = soup.select(selectors.get('event', "a.hc-card-link-wrapper"))
 
-                    # Extract URL
-                    link_elem = item.select_one('a')
-                    event_url = link_elem.get('href') if link_elem else source['url']
-                    if event_url.startswith('/'):
-                        event_url = f"{source['url'].rstrip('/')}{event_url}"
+                base_url = "https://www.swisslife-hall.de" if source_name == "Swiss Life Hall" else "https://www.capitol-hannover.de"
 
-                    event = Event(
-                        title=title,
-                        date=event_date,
-                        venue=venue,
-                        url=event_url,
-                        category="radar",
-                        metadata={},
-                    )
-                    events.append(event)
+                for item in event_items[:limit]:
+                    try:
+                        # Title is in the 'title' attribute of the link
+                        title = item.get('title')
+                        if not title:
+                            # Fallback to h4/h3 if title attribute not present
+                            title_elem = item.select_one('h4, h3')
+                            if title_elem:
+                                title = title_elem.get_text(strip=True)
+                            else:
+                                continue
 
-                except Exception as e:
-                    logger.debug(f"Error parsing concert item: {e}")
-                    continue
+                        if should_filter_event(title):
+                            continue
 
-            logger.info(f"Found {len(events)} events from {source['name']}")
+                        # Date is in a <time> element with format like "AB22NOV2025"
+                        date_elem = item.select_one('time')
+                        if not date_elem:
+                            continue
+
+                        date_str = date_elem.get_text(strip=True)
+                        # Parse "AB22NOV2025" format - extract day, month, year
+                        import re
+                        date_match = re.search(r'(\d{1,2})([A-ZÄÖÜa-zäöü]+)(\d{4})', date_str)
+                        if not date_match:
+                            continue
+
+                        day, month_str, year = date_match.groups()
+                        month_map = {
+                            'jan': 1, 'januar': 1,
+                            'feb': 2, 'februar': 2,
+                            'mär': 3, 'märz': 3, 'mar': 3,
+                            'apr': 4, 'april': 4,
+                            'mai': 5, 'may': 5,
+                            'jun': 6, 'juni': 6,
+                            'jul': 7, 'juli': 7,
+                            'aug': 8, 'august': 8,
+                            'sep': 9, 'september': 9,
+                            'okt': 10, 'oktober': 10, 'oct': 10,
+                            'nov': 11, 'november': 11,
+                            'dez': 12, 'dezember': 12, 'dec': 12,
+                        }
+                        month = month_map.get(month_str.lower(), 1)
+                        event_date = datetime(int(year), month, int(day), 20, 0)  # Default to 8 PM
+
+                        event_url = item.get('href')
+                        if not event_url.startswith('http'):
+                            event_url = f"{base_url}{event_url}"
+
+                        event = Event(
+                            title=title,
+                            date=event_date,
+                            venue=source_name,
+                            url=event_url,
+                            category="radar",
+                            metadata={},
+                        )
+                        events.append(event)
+
+                    except Exception as e:
+                        logger.debug(f"Error parsing {source_name} event: {e}")
+                        continue
+
+            logger.info(f"Found {len([e for e in events if e.venue == source_name])} events from {source_name}")
 
         except httpx.RequestError as e:
             logger.error(f"{source['name']} request failed: {e}")
@@ -340,7 +477,7 @@ def get_all_events() -> dict:
         Dictionary with keys:
         - 'movies_this_week': List of movie events in next 7 days
         - 'culture_this_week': List of culture events in next 7 days
-        - 'big_events_radar': List of upcoming big events (next 5)
+        - 'big_events_radar': List of upcoming big events (beyond next 7 days)
     """
     today = datetime.now()
     next_week = today + timedelta(days=7)
@@ -350,7 +487,7 @@ def get_all_events() -> dict:
 
     movies = scrape_astor_movies()
     culture = scrape_staatstheater_events(today, next_week)
-    radar = scrape_hannover_concerts(limit=5)
+    radar = scrape_hannover_concerts(limit=10)
 
     # Filter movies to this week only
     movies_this_week = [m for m in movies if m.is_this_week()]
@@ -358,13 +495,16 @@ def get_all_events() -> dict:
     # Culture events are already filtered by date range
     culture_this_week = culture
 
+    # Filter radar events to EXCLUDE this week (only show future events)
+    radar_filtered = [r for r in radar if r.date > next_week]
+
     # Sort all lists by date
     movies_this_week.sort(key=lambda x: x.date)
     culture_this_week.sort(key=lambda x: x.date)
-    radar.sort(key=lambda x: x.date)
+    radar_filtered.sort(key=lambda x: x.date)
 
     return {
         'movies_this_week': movies_this_week,
         'culture_this_week': culture_this_week,
-        'big_events_radar': radar,
+        'big_events_radar': radar_filtered,
     }
