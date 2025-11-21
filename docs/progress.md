@@ -1,316 +1,186 @@
 # KinoWeek Development Progress
 
 ## Overview
-Astor Kino Notifier - A web scraping application that extracts movie schedules from Astor Grand Cinema Hannover and sends notifications via Telegram.
+
+KinoWeek - A weekly event aggregator for Hannover that fetches OV movies from Astor Grand Cinema and concerts from major venues, delivering a formatted digest via Telegram.
 
 ## Project Structure
+
 ```
 KinoWeek/
 ├── src/kinoweek/           # Main package
-│   ├── __init__.py        # Package initialization
-│   ├── scraper.py         # Playwright automation & data extraction
+│   ├── __init__.py        # Package exports with lazy imports
+│   ├── models.py          # Event dataclass (unified structure)
+│   ├── config.py          # URLs, venues, settings
+│   ├── scrapers.py        # AstorMovieScraper + ConcertVenueScraper
 │   ├── notifier.py        # Message formatting & Telegram integration
-│   └── main.py            # Main orchestration & CLI
-├── tests/                 # Test suite
+│   └── main.py            # Orchestration & CLI
+├── tests/                 # Test suite (26 tests)
 ├── docs/                  # Documentation
-├── output/                # Local test results (created on demand)
-├── pyproject.toml         # Modern Python project config
+├── output/                # Local test results
+├── pyproject.toml         # Modern Python config with ruff/mypy
 └── .env.example          # Environment variables template
 ```
 
 ## Development Phases
 
-### ✅ Phase 1: MVP Implementation (COMPLETED)
-- **Status**: ✅ Complete
-- **Date**: 2025-11-14
+### Phase 1-5: Initial Development (Historical)
+- MVP implementation with Playwright browser automation
+- Discovered Playwright was blocked by anti-scraping measures
+- Pivoted to direct API access (backend.premiumkino.de)
+- OV filtering implementation
+- Telegram integration
+
+### Phase 6: Multi-Source Architecture
+- **Status**: Completed
+- **Date**: 2025-11-21
 - **Achievements**:
-  - Single-file implementation with full functionality
-  - Playwright browser automation
-  - Movie schedule extraction
-  - Telegram Bot API integration
-  - Basic error handling and logging
-  - Comprehensive test suite (12 tests passing)
+  - Added Staatstheater Hannover scraper (culture events)
+  - Added concert venue scrapers (ZAG Arena, Swiss Life Hall, Capitol)
+  - Unified Event model for all sources
+  - Three-section message format (Movies, Culture, Radar)
 
-### ✅ Phase 2: Core Implementation (COMPLETED)
-- **Status**: ✅ Complete
-- **Date**: 2025-11-14
+### Phase 7: Codebase Modernization
+- **Status**: Completed
+- **Date**: 2025-11-21
 - **Achievements**:
-  - Enhanced error handling
-  - Improved data extraction selectors
-  - Cookie consent handling
-  - Message formatting optimization
-  - JSON backup functionality
-  - Full type hints and documentation
+  - **Removed Legacy Code**: Deleted deprecated `scraper.py` module
+  - **Modern Python**: Using 3.13+ features (slots, kw_only, Literal types)
+  - **Class-Based Scrapers**: Abstract `BaseScraper` with implementations
+  - **Type Safety**: Comprehensive type hints, TypedDict for configs
+  - **Enhanced Testing**: 26 tests with proper mocking
+  - **Better Organization**: Clear section headers, docstrings throughout
 
-### ✅ Phase 3: Code Refactoring (CURRENT)
-- **Status**: ✅ Complete
-- **Date**: 2025-11-14
+### Phase 8: Streamlining
+- **Status**: Completed
+- **Date**: 2025-11-21
 - **Achievements**:
-  - **Modular Architecture**: Split 424-line file into 3 focused modules
-  - **Clean Separation**: Each module has single responsibility
-  - **Development Support**: Added local file output for testing
-  - **Modern Package Structure**: Proper src/ layout following Python best practices
-  - **Enhanced CLI**: Added command-line arguments for development mode
+  - **Removed Staatstheater**: Non-functional scraper removed (page structure changed)
+  - **Enhanced Concert Formatting**: German day names (Sa, So, Mo, etc.)
+  - **Expanded Date Display**: "Sa, 29. Nov | 20:00 @ ZAG Arena"
+  - **Increased Event Limit**: 15 concerts per venue (up from 10)
+  - **Two-Source Architecture**: Movies + Concerts (simpler, more reliable)
 
-### ✅ Phase 3.5: Environment & Dependency Correction (COMPLETED)
-- **Status**: ✅ Complete
-- **Date**: 2025-11-14
-- **Achievements**:
-  - Corrected `pyproject.toml` to use standard `[project.optional-dependencies]` for development dependencies.
-  - Resolved critical `uv` virtual environment issues preventing package installation.
-  - Established a reliable dependency installation workflow using `uv`.
-  - Installed Playwright browsers required for testing and execution.
-  - Successfully ran the project's test suite, identifying a code-level bug.
+## Current Architecture
 
-### 🔄 Phase 4: Local Testing & Validation (BLOCKED)
-- **Status**: 🔴 Blocked
-- **Date**: 2025-11-14
-- **Tasks**:
-  - [x] Update project configuration for new package structure
-  - [x] Adapt test suite to work with refactored modules
-  - [x] Create development testing workflow
-  - [ ] Validate functionality with local file output - **Blocked by anti-scraping measures.**
-  - [ ] Create testing documentation
+### Two Event Sources
 
-### ⚠️ Phase 4.5: Scraping Blocker Investigation (RESOLVED)
-- **Status**: ✅ **Resolved**
-- **Date**: 2025-11-15 (blocked) → 2025-11-17 (resolved)
-- **Summary**: The original Playwright-based scraper was blocked by anti-scraping measures. **Successfully resolved by switching to direct API calls.**
-- **Investigation Details**:
-  - The new website is a Single-Page Application (SPA) that prevented Playwright scraping.
-  - The website was actively blocking automated browser access.
-- **Solution**: Discovered and implemented direct API access to `backend.premiumkino.de/v1/de/hannover/program`
-  - Much faster and more reliable than browser automation
-  - No anti-scraping issues
-  - Cleaner, simpler code
-  - Successfully filters for OV (Original Version) movies only
+1. **Astor Grand Cinema** (Movies)
+   - Direct JSON API access
+   - OV filtering (no German dubs)
+   - Metadata: duration, rating, year, country, genres, language
+   - Timeframe: This week (7 days)
 
-### ✅ Phase 4.6: API-Based Scraper Implementation (COMPLETED)
-- **Status**: ✅ **Complete**
-- **Date**: 2025-11-17
-- **Achievements**:
-  - **API Discovery**: Found the backend API endpoint for movie data
-  - **Direct API Access**: Replaced Playwright with httpx for direct API calls
-  - **OV Filtering**: Implemented intelligent filtering to show only Original Version movies
-    - Filters out German-dubbed movies (355 out of 419 total showtimes)
-    - Keeps English, Japanese, Italian, Spanish, Russian, and other original language films
-    - Includes original versions with German subtitles (marked with "Untertitel:")
-  - **Results**: 68 OV showtimes across 46 unique movies and 34 dates
-  - **Dependency Cleanup**: Unified on httpx (removed requests/playwright dependencies)
-  - **End-to-End Testing**: Complete workflow verified working
-  - **Output Validation**: Confirmed OV-only filtering working correctly
-
-### ✅ Phase 4.7: Output Formatting Enhancement (COMPLETED)
-- **Status**: ✅ **Complete**
-- **Date**: 2025-11-17
-- **Achievements**:
-  - **Rich Metadata Extraction**: Now displaying duration, age rating (FSK), year, and country
-  - **Chronological Sorting**: Dates sorted by actual date instead of alphabetically
-  - **Compact Language Codes**: Abbreviated to EN, JP, IT, ES, RU, DE for space efficiency
-  - **Summary Statistics**: Total films, showtimes, and days displayed at the top
-  - **Improved Data Structure**: Added `MovieInfo` and `Showtime` classes for better type safety
-  - **Enhanced JSON Output**: Full metadata structure stored in schedule.json
-  - **Telegram Optimization**: Better handling of 4096 character limit with clear truncation
-  - **Professional Formatting**: Cleaner, more polished presentation suitable for production
-
-### ✅ Phase 5: Pre-Production Fixes (COMPLETED)
-- **Status**: ✅ **Complete**
-- **Date**: 2025-11-17
-- **Achievements**:
-  - **Fixed 3 Critical Blockers**:
-    1. ✅ Package configuration (`pyproject.toml:25`): Changed `packages = ["src"]` → `packages = ["src/kinoweek"]`
-    2. ✅ Test mocks (3 locations): Replaced `requests` mocking with proper `httpx.Client` mocking
-    3. ✅ Environment validation: Added startup validation for required Telegram environment variables
-  - **Updated Test Suite**: Fixed all test data structures to match new MovieInfo/Showtime classes
-  - **Verified Functionality**:
-    - ✅ 12/12 tests passing
-    - ✅ Local mode works (33 dates, 44 OV movies extracted)
-    - ✅ Output formatting validated (JSON + Telegram messages)
-    - ✅ Environment validation fails fast with clear errors
-  - **Documentation**: Updated `docs/pre-prod.md` with comprehensive production checklist
-
-### 📋 Phase 6: Containerization & Deployment (NEXT)
-- **Status**: 📋 Ready to Start
-- **Next Phase**
-- **Tasks**:
-  - Docker containerization
-  - Environment configuration
-  - Production deployment setup (GitHub Actions recommended)
-  - CI/CD pipeline with weekly cron schedule
-
-## Technical Details
+2. **Concert Venues** (Concerts)
+   - HTML scraping with BeautifulSoup
+   - Venues: ZAG Arena, Swiss Life Hall, Capitol Hannover
+   - Metadata: time, venue
+   - Timeframe: Beyond 7 days (on the radar)
 
 ### Module Responsibilities
 
-#### `scraper.py` (159 lines)
-- **Purpose**: API-based data fetching with rich metadata extraction
-- **Key Classes**:
-  - `MovieInfo`: Data class for movie metadata (duration, rating, year, country, genres)
-  - `Showtime`: Data class for showtime information with datetime objects
-- **Key Functions**:
-  - `scrape_movies()`: Main API orchestration, fetches from backend.premiumkino.de
-  - `is_original_version()`: Smart filtering to identify OV vs. dubbed movies
-  - Filters out 85% of German-dubbed content automatically
-  - Returns chronologically sorted data with full movie metadata
-  - Extracts duration, FSK ratings, release year, country, and genres
+#### `models.py`
+- `Event` dataclass with slots and kw_only
+- `Literal["movie", "culture", "radar"]` for category
+- Helper methods for date formatting
 
-#### `notifier.py` (195 lines)
-- **Purpose**: Message formatting and notifications with enhanced presentation
-- **Key Functions**:
-  - `format_message()`: Polished, compact message creation with metadata
-    - Displays duration (e.g., "2h17m"), FSK ratings, and release year
-    - Uses abbreviated language codes (EN, JP, IT, ES, RU, DE)
-    - Summary statistics at the top (total films, showtimes, days)
-    - Smart truncation for Telegram's 4096 character limit
-  - `send_telegram()`: Telegram Bot API integration using httpx
-  - `save_to_file()`: Enhanced JSON output with full metadata structure
-  - `notify()`: Unified notification interface
+#### `config.py`
+- `ASTOR_API_URL`: Movie API endpoint
+- `CONCERT_VENUES`: Tuple of VenueConfig TypedDicts
+- `GERMAN_MONTH_MAP`: Date parsing support
+- HTTP client settings
 
-#### `main.py` (48 lines)
-- **Purpose**: Application orchestration and CLI
-- **Key Features**:
-  - Complete workflow coordination
-  - Command-line interface with `--local` flag
-  - Enhanced logging with file output
-  - Error handling and exit codes
+#### `scrapers.py`
+- `BaseScraper`: Abstract base class
+- `AstorMovieScraper`: JSON API client
+- `ConcertVenueScraper`: HTML scraper with venue-specific parsing
+- `fetch_all_events()`: Orchestration function
 
-### Key Improvements Made
+#### `notifier.py`
+- German day/month mappings for localized output
+- Section formatters for movies and concerts
+- Telegram API integration
+- File backup (JSON + text)
 
-1. **Modularity**: Each module focuses on a single concern
-2. **Maintainability**: Easier to test, debug, and extend
-3. **Development Support**: Local testing without Telegram dependency
-4. **Clean Architecture**: Clear separation of concerns
-5. **Enhanced CLI**: Better user experience for development
-6. **Rich Metadata**: Movie duration, ratings, year, and country information
-7. **Chronological Sorting**: Dates displayed in actual date order
-8. **Professional Formatting**: Compact, polished output optimized for Telegram
-9. **Type Safety**: Data classes for structured information handling
+#### `main.py`
+- CLI with `--local` flag
+- Environment validation
+- Logging configuration
+- Workflow orchestration
 
-### Testing Strategy
+## Current Status (2025-11-21)
 
-#### Local Development Mode
-```bash
-# Run locally, save results to output/ folder
-PYTHONPATH=src uv run python -m kinoweek.main --local
+### Working Features
+- Astor Movies: 57 OV showtimes, ~27 this week
+- ZAG Arena: 9 concerts
+- Swiss Life Hall: 10 concerts
+- Capitol Hannover: 10 concerts
+- All 26 tests passing
+- End-to-end workflow verified
 
-# Or test the scraper directly
-PYTHONPATH=src uv run python -c "from kinoweek.scraper import scrape_movies; print(scrape_movies())"
+### Output Format
+
+**Movies (This Week)**:
+```
+*Fri 21.11.*
+  *Chainsaw Man - The Movie: Reze Arc (2025)*
+  _1h41m | FSK16_
+  22:50 (JP, UT:DE)
 ```
 
-#### Production Mode
-```bash
-# Send to Telegram (requires .env setup)
-PYTHONPATH=src uv run python -m kinoweek.main
+**On The Radar (Concerts)**:
+```
+*LUCIANO*
+Sa, 29. Nov | 20:00 @ ZAG Arena
 ```
 
-## Current Status (2025-11-17)
+### Technical Metrics
+- **Test Coverage**: 26 passing tests
+- **Execution Time**: ~6 seconds
+- **API Calls**: 4 total (1 Astor + 3 venues)
+- **Python Version**: 3.13+
+- **Dependencies**: httpx, beautifulsoup4, python-dotenv
 
-### ✅ Completed & Working
-- API-based scraper with direct backend access
-- Intelligent OV (Original Version) filtering
-- Rich metadata extraction (duration, ratings, year, genres)
-- Chronological date sorting
-- Professional, compact output formatting
-- Telegram notification system with optimized message format
-- Local testing mode with enhanced JSON output
-- **Comprehensive test suite** (12/12 tests passing)
-- **Fixed package configuration** (proper hatchling setup)
-- **Environment validation** at startup (fail fast on missing credentials)
-- Clean, modular architecture with type-safe data classes
-- Documentation updated and polished
-- Production-ready checklist documented in `docs/pre-prod.md`
+## Future Improvements
 
-### 📊 Current Metrics
-- **Test Coverage**: 12 passing, 0 failing, 3 skipped
-- **Filtering Efficiency**: 85% of content filtered (355/419 showtimes)
-- **OV Results**: 44 showtimes across 33 unique films (current run)
-- **Message Size**: ~6KB (optimized for Telegram's 4096 limit with truncation)
-- **Dependencies**: Minimal (httpx, python-dotenv)
-- **No Browser Automation**: No Playwright/Selenium needed
-- **Production Status**: ✅ Ready (awaiting deployment credentials)
+### Potential Enhancements
+1. **Movie Deduplication**: Group showtimes per film
+2. **Ticket Links**: Include URLs in concert output
+3. **Genre Display**: Show movie genres in output
+4. **Additional Venues**: Easy to add via config
 
-### 📱 Output Format Highlights
-- **Summary Stats**: Films, showtimes, and days displayed prominently
-- **Movie Metadata**: Duration (e.g., "2h17m"), FSK ratings, release year
-- **Compact Language Codes**: EN, JP, IT, ES, RU, DE for space efficiency
-- **Chronological Order**: Dates sorted from earliest to latest
-- **Professional Layout**: Clean separators, consistent formatting
-- **Smart Truncation**: Clear handling when content exceeds limits
-
-### ✅ Ready for Production
-The application is **production-ready** with all blockers resolved:
-- ✅ All core functionality working and tested (12/12 tests pass)
-- ✅ Package configuration fixed (proper hatchling build)
-- ✅ Test suite fully functional with proper httpx mocking
-- ✅ Environment validation implemented (fail fast on missing credentials)
-- ✅ OV filtering accurate and tested
-- ✅ Output format polished and validated
-- ✅ Metadata extraction complete
-- ✅ Error handling implemented
-- ✅ Logging configured
-- ✅ Production-ready presentation
-- ✅ Comprehensive pre-production checklist (docs/pre-prod.md)
-
-## Next Steps - Phase 6: Containerization & Deployment
-
-### ⚡ Phase 6.1: Immediate - GitHub Actions Deployment (Recommended)
-**Priority**: HIGHEST - Simplest path to production (30 mins)
-- [ ] Create `.github/workflows/weekly-scrape.yml`
-- [ ] Configure cron schedule (Sunday 10:00 AM UTC)
-- [ ] Add secrets to GitHub repo (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
-- [ ] Test manual workflow trigger
-- [ ] Enable automated weekly runs
-
-**Why GitHub Actions?**
-- ✅ No infrastructure needed
-- ✅ Free tier sufficient for weekly runs
-- ✅ Built-in scheduling with cron
-- ✅ Easy to monitor and debug
-- ✅ Integrated with repository
-
-### ⚙️ Phase 6.2: Optional - Docker Containerization
-**Priority**: MEDIUM - Useful for Coolify deployment
-- [ ] Create Dockerfile with multi-stage build
-- [ ] Set up Docker Compose for local testing
-- [ ] Configure environment variables in container
-- [ ] Test container locally
-- [ ] Optimize image size
-
-### 🔄 Phase 6.3: Optional - Coolify Deployment
-**Priority**: LOW - Alternative if self-hosted preferred
-- [ ] Set up Coolify project
-- [ ] Configure scheduled task service
-- [ ] Add environment variables in Coolify UI
-- [ ] Set up monitoring and logging
-
-### 📊 Phase 6.4: Monitoring & Maintenance (Ongoing)
-- [ ] Monitor GitHub Actions runs
-- [ ] Set up Telegram alerts for failures
-- [ ] Track OV movie count trends
-- [ ] Review logs after first runs
-- [ ] Monthly dependency updates
+### Extension Points
+- New scrapers: Extend `BaseScraper` class
+- New channels: Add alongside Telegram
+- Persistence: Add database for historical analysis
 
 ## Lessons Learned
 
 ### Technical Insights
-- **API Discovery Beats Browser Automation**: Direct API access is faster, more reliable, and simpler than Playwright
-- **Smart Filtering is Key**: 85% of content was German dubs - filtering at the source saves bandwidth and improves UX
-- **Modern Python Packaging**: Using `src/` layout and `pyproject.toml` improved project organization significantly
-- **httpx Over requests**: Single HTTP library for consistency (both scraper and notifier)
-- **Metadata Extraction Adds Value**: Duration, ratings, and year make the output more informative and professional
-- **Chronological Sorting is Essential**: Users care about when movies play, not alphabetical day names
-- **Compact Formatting Matters**: Telegram's 4096 char limit requires thoughtful abbreviation and layout
+- **API > Browser Automation**: Direct API access is faster and more reliable
+- **Graceful Degradation**: Handle scraper failures without crashing
+- **Type Safety**: Modern Python features catch bugs early
+- **Class-Based Architecture**: Easier to extend and test
 
 ### Development Process
-- **TDD Approach**: Writing tests first helped identify edge cases early
-- **Local Testing Mode**: `--local` flag was crucial for development without spamming Telegram
-- **Documentation as Code**: Keeping `docs/progress.md` up-to-date helped track decision rationale
-- **KISS Principle**: Simple, focused modules are easier to debug and maintain
-- **Iterative Polish**: First get it working, then make it beautiful
-- **Data Classes Improve Clarity**: `MovieInfo` and `Showtime` classes made code more maintainable
+- **Remove Dead Code**: Staatstheater removal simplified codebase
+- **Test Everything**: 26 tests gave confidence to refactor
+- **Iterate on Formatting**: Multiple passes to polish output
+- **Document as You Go**: Keep docs in sync with code
 
-### Project Management
-- **Pivoting is OK**: When Playwright was blocked, switching to API was the right call
-- **Incremental Progress**: Each phase built on the previous, making rollback safer
-- **User-Focused**: OV filtering addresses the real user need (only original version movies)
-- **Polish Matters**: Professional formatting makes the difference between MVP and production-ready
+## Commands
+
+```bash
+# Run locally (saves to output/)
+uv run python -m kinoweek.main --local
+
+# Run with Telegram
+uv run python -m kinoweek.main
+
+# Run tests
+uv run python -m pytest tests/ -v
+
+# Check output
+cat output/latest_message.txt
+cat output/events.json
+```
