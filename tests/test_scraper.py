@@ -14,13 +14,11 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from kinoweek.aggregator import fetch_all_events
 from kinoweek.models import Event
 from kinoweek.notifier import format_message, notify, send_telegram_message
-from kinoweek.scrapers import (
-    AstorMovieScraper,
-    ConcertVenueScraper,
-    fetch_all_events,
-)
+from kinoweek.sources.cinema.astor import AstorSource as AstorMovieScraper
+from kinoweek.sources.concerts.zag_arena import ZAGArenaSource as ConcertVenueScraper
 
 
 # =============================================================================
@@ -134,7 +132,7 @@ class TestAstorMovieScraper:
         scraper = AstorMovieScraper()
         assert scraper.source_name == "Astor Grand Cinema"
 
-    @patch("kinoweek.scrapers.httpx.Client")
+    @patch("kinoweek.sources.base.httpx.Client")
     def test_fetch_returns_list(self, mock_client: Mock) -> None:
         """Test that fetch returns a list of events."""
         # Mock API response
@@ -153,7 +151,7 @@ class TestAstorMovieScraper:
 
         assert isinstance(result, list)
 
-    @patch("kinoweek.scrapers.httpx.Client")
+    @patch("kinoweek.sources.base.httpx.Client")
     def test_fetch_parses_movies(self, mock_client: Mock) -> None:
         """Test that fetch correctly parses movie data."""
         mock_response = Mock()
@@ -190,7 +188,7 @@ class TestAstorMovieScraper:
         assert result[0].category == "movie"
         assert result[0].metadata["duration"] == 120
 
-    @patch("kinoweek.scrapers.httpx.Client")
+    @patch("kinoweek.sources.base.httpx.Client")
     def test_fetch_filters_german_dubs(self, mock_client: Mock) -> None:
         """Test that German dubbed movies are filtered out."""
         mock_response = Mock()
@@ -216,32 +214,33 @@ class TestAstorMovieScraper:
 
 
 class TestConcertVenueScraper:
-    """Tests for the concert venue scraper."""
+    """Tests for the concert venue scraper (ZAG Arena)."""
 
     def test_scraper_source_name(self) -> None:
         """Test scraper returns correct source name."""
         scraper = ConcertVenueScraper()
-        assert scraper.source_name == "Concert Venues"
+        assert scraper.source_name == "ZAG Arena"
 
     def test_scraper_max_events(self) -> None:
-        """Test scraper respects max events limit."""
-        scraper = ConcertVenueScraper(max_events_per_venue=5)
-        assert scraper._max_events == 5
+        """Test scraper has max events limit configured."""
+        scraper = ConcertVenueScraper()
+        assert scraper.max_events == 15
 
 
 class TestFetchAllEvents:
     """Tests for the event aggregation function."""
 
-    @patch("kinoweek.scrapers.ConcertVenueScraper.fetch")
-    @patch("kinoweek.scrapers.AstorMovieScraper.fetch")
+    @patch("kinoweek.aggregator.get_all_sources")
     def test_returns_categorized_dict(
         self,
-        mock_astor: Mock,
-        mock_concert: Mock,
+        mock_get_sources: Mock,
     ) -> None:
         """Test that fetch_all_events returns correctly structured data."""
-        mock_astor.return_value = []
-        mock_concert.return_value = []
+        # Mock the source registry to return empty sources
+        mock_source = Mock()
+        mock_source.return_value.enabled = True
+        mock_source.return_value.fetch.return_value = []
+        mock_get_sources.return_value = {"mock_source": mock_source}
 
         result = fetch_all_events()
 
