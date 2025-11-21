@@ -107,10 +107,10 @@ def __getattr__(name: str):
         return AstorSource
 
     if name == "ConcertVenueScraper":
-        # Return a compatibility wrapper or the old class
-        from kinoweek import scrapers
+        # Return ZAGArenaSource as a compatibility alias
+        from kinoweek.sources.concerts.zag_arena import ZAGArenaSource
 
-        return getattr(scrapers, name)
+        return ZAGArenaSource
 
     if name in ("notify", "format_message"):
         from kinoweek import notifier
