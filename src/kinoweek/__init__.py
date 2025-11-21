@@ -40,7 +40,6 @@ __all__ = [
     # Scrapers
     "fetch_all_events",
     "AstorMovieScraper",
-    "StaatstheaterScraper",
     "ConcertVenueScraper",
     # Notifier
     "notify",
@@ -62,7 +61,7 @@ def __getattr__(name: str):
         from kinoweek.scrapers import fetch_all_events
         return fetch_all_events
 
-    if name in ("AstorMovieScraper", "StaatstheaterScraper", "ConcertVenueScraper"):
+    if name in ("AstorMovieScraper", "ConcertVenueScraper"):
         from kinoweek import scrapers
         return getattr(scrapers, name)
 

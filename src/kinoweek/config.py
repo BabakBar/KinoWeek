@@ -10,12 +10,11 @@ from typing import Final, TypedDict
 
 __all__ = [
     "ASTOR_API_URL",
-    "STAATSTHEATER_CALENDAR_URL",
     "CONCERT_VENUES",
-    "IGNORE_KEYWORDS",
     "REQUEST_TIMEOUT_SECONDS",
     "USER_AGENT",
     "TELEGRAM_MESSAGE_MAX_LENGTH",
+    "GERMAN_MONTH_MAP",
 ]
 
 
@@ -25,11 +24,6 @@ __all__ = [
 
 ASTOR_API_URL: Final[str] = "https://backend.premiumkino.de/v1/de/hannover/program"
 """Astor Grand Cinema API endpoint for movie program data."""
-
-STAATSTHEATER_CALENDAR_URL: Final[str] = (
-    "https://staatstheater-hannover.de/de_DE/kalender"
-)
-"""Staatstheater Hannover calendar page for HTML scraping."""
 
 
 # =============================================================================
@@ -94,22 +88,6 @@ CONCERT_VENUES: Final[tuple[VenueConfig, ...]] = (
     },
 )
 """Concert venue configurations with CSS selectors for scraping."""
-
-
-# =============================================================================
-# Filtering Configuration
-# =============================================================================
-
-IGNORE_KEYWORDS: Final[tuple[str, ...]] = (
-    "Führung",
-    "Einführung",
-    "Kindertheater",
-    "Kindertanz",
-    "Workshop",
-    "Probe",
-    "Geschlossene Veranstaltung",
-)
-"""Keywords to filter out unwanted events (tours, workshops, children's events)."""
 
 
 # =============================================================================
