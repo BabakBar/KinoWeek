@@ -1,405 +1,319 @@
-# Architecture Document: Astor Kino Notifier (KinoWeek)
+# Architecture Document: KinoWeek
 
 ## Executive Summary
 
-This document outlines the complete technical architecture for the Astor Kino Notifier system, a production-grade web scraping and notification service that automatically extracts Original Version (OV) movie schedules from Astor Grand Cinema Hannover and delivers formatted reports via Telegram.
+KinoWeek is a stateless, weekly event aggregator for Hannover that fetches OV movies and concerts from two sources and delivers a formatted digest via Telegram. The system uses modern Python (3.13+) with class-based scrapers, type hints, and comprehensive testing.
 
 ## System Overview
 
-The system follows a microservices architecture with clear separation of concerns:
-
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Scheduler     │───▶│   Scraper        │───▶│   Notifier      │
-│  (GitHub/Cron)  │    │  (httpx/API)     │    │  (Telegram)     │
+│   Scheduler     │───▶│   Scrapers       │───▶│   Notifier      │
+│  (Cron/Manual)  │    │  (httpx/BS4)     │    │  (Telegram)     │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
          │                       │                       │
          ▼                       ▼                       ▼
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Cron Job      │    │   Direct API     │    │   Bot API       │
-│   (Weekly)      │    │   Calls (HTTP)   │    │   Integration   │
+│   Weekly Job    │    │  • Astor API     │    │   Bot API       │
+│   (Stateless)   │    │  • Venue HTML    │    │   + File Backup │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
 ```
 
-**Architecture Note**: Current implementation uses direct API calls via httpx (not browser automation). This is faster, more reliable, and requires no headless browser infrastructure.
-
 ## Component Architecture
 
-### 1. Core Scraper Module (`scraper.py`)
+### 1. Data Model (`models.py`)
 
-**Purpose**: Extract movie schedule data directly from PremiumKino API
+**Purpose**: Unified event structure for all sources
+
+```python
+@dataclass(slots=True, kw_only=True)
+class Event:
+    title: str
+    date: datetime
+    venue: str
+    url: str
+    category: Literal["movie", "culture", "radar"]
+    metadata: dict[str, str | int | list[str]] = field(default_factory=dict)
+```
+
+**Features**:
+- `slots=True` for memory efficiency
+- `kw_only=True` for explicit construction
+- `Literal` type for category validation
+- Helper methods: `format_date_short()`, `format_time()`, `is_this_week()`
+
+### 2. Configuration (`config.py`)
+
+**Purpose**: Centralized settings with type safety
 
 **Key Components**:
-- **MovieInfo**: Data class for movie metadata (duration, rating, year, country, genres)
-- **Showtime**: Data class for individual showtime (datetime, time_str, version)
-- **is_original_version()**: Filter logic for OV vs dubbed content
-- **scrape_movies()**: Main API client using httpx
+- `ASTOR_API_URL`: Movie API endpoint
+- `CONCERT_VENUES`: Tuple of `VenueConfig` TypedDicts with selectors
+- `GERMAN_MONTH_MAP`: Date parsing support
+- `Final` constants for immutability
 
-**Data Flow**:
-```
-API Request (httpx) → JSON Response → Parse Movies & Genres →
-Filter OV Performances → Build MovieInfo Objects →
-Chronological Sort → Return Structured Schedule
-```
+### 3. Scrapers (`scrapers.py`)
 
-**Implementation Details**:
+**Architecture**: Class-based with abstract base
+
 ```python
-# Direct API access - no browser needed
-api_url = "https://backend.premiumkino.de/v1/de/hannover/program"
-with httpx.Client() as client:
-    response = client.get(api_url, headers=headers)
-    data = response.json()
+class BaseScraper(ABC):
+    @property
+    @abstractmethod
+    def source_name(self) -> str: ...
+
+    @abstractmethod
+    def fetch(self) -> list[Event]: ...
 ```
 
-### 2. Container Layer (`Dockerfile`)
+**Implementations**:
 
-**Multi-stage Build Strategy**:
-- **Stage 1**: Build environment with Python and dependencies
-- **Stage 2**: Runtime environment with only necessary components
-- **Security**: Non-root user, minimal attack surface
-- **Optimization**: Layer caching, minimal final image size
+#### AstorMovieScraper
+- **Source**: `backend.premiumkino.de` JSON API
+- **Filter**: Original Version only (no German dubs)
+- **Output**: Events with `category="movie"`
+- **Metadata**: duration, rating, year, country, genres, language
 
-### 3. Deployment Layer (Coolify)
-
-**Components**:
-- **Scheduled Task Service**: Cron-based execution
-- **Environment Management**: Secure secret handling
-- **Resource Monitoring**: Logs and execution tracking
-- **Auto-recovery**: Retry logic and failure handling
-
-## Data Architecture
-
-### Input Data Sources
-```
-Primary Source: https://backend.premiumkino.de/v1/de/hannover/program
-├── movies[]          # Metadata: title, duration, rating, year, country, genreIds
-├── performances[]    # Showtimes: begin ISO timestamp, language information
-└── genres[]          # Lookup table for genre IDs → names
-```
-
-### Internal Data Structure
 ```python
-schedule_data = {
-    "Mon 24.11.": {
-        "Wicked: Part 2": {
-            "info": MovieInfo(
-                title="Wicked: Part 2",
-                duration=113,
-                rating=12,
-                year=2024,
-                country="US",
-                genres=["Fantasy", "Adventure"],
-            ),
-            "showtimes": [
-                Showtime(
-                    datetime=datetime(2024, 11, 24, 19, 30),
-                    time_str="19:30",
-                    version="Sprache: Englisch, Untertitel: Deutsch",
-                )
-            ],
-        }
-    }
+# OV Detection Logic
+def _is_original_version(language: str) -> bool:
+    if "Deutsch" in language:
+        return "Untertitel:" in language  # German subs = OV
+    return True  # All other languages are OV
+```
+
+#### ConcertVenueScraper
+- **Sources**: ZAG Arena, Swiss Life Hall, Capitol Hannover
+- **Method**: HTML scraping with BeautifulSoup
+- **Output**: Events with `category="radar"`
+- **Metadata**: time, location/subtitle
+
+**Venue-Specific Parsing**:
+- ZAG Arena: `.wpem-event-layout-wrapper` containers
+- Swiss Life Hall / Capitol: `.hc-card-link-wrapper` cards
+
+### 4. Notifier (`notifier.py`)
+
+**Purpose**: Message formatting and delivery
+
+**Key Functions**:
+- `format_message()`: Creates Telegram-ready message
+- `send_telegram_message()`: Posts to Telegram Bot API
+- `save_to_file()`: JSON and text backup
+- `notify()`: Orchestrates local/remote delivery
+
+**Message Sections**:
+1. **Movies (This Week)**: Grouped by date, with metadata
+2. **On The Radar**: Concerts with German day names
+
+**Date Formatting**:
+```python
+# German day/month names for concert display
+_GERMAN_DAYS = {0: "Mo", 1: "Di", 2: "Mi", 3: "Do", 4: "Fr", 5: "Sa", 6: "So"}
+_GERMAN_MONTHS = {1: "Jan", 2: "Feb", ..., 12: "Dez"}
+
+# Output: "Sa, 29. Nov | 20:00 @ ZAG Arena"
+```
+
+### 5. Main Orchestration (`main.py`)
+
+**Entry Point**: `main()` → `run(local_only=False)`
+
+**Workflow**:
+1. Configure logging (console + file)
+2. Validate environment (Telegram credentials)
+3. Call `fetch_all_events()`
+4. Call `notify(events_data, local_only=...)`
+5. Exit with appropriate status code
+
+## Data Flow
+
+### Event Aggregation
+
+```
+AstorMovieScraper.fetch()     ─┐
+                               ├─► fetch_all_events()
+ConcertVenueScraper.fetch()   ─┘
+         │
+         ▼
+┌────────────────────────────────────┐
+│ Categorization:                    │
+│ • movies_this_week (next 7 days)   │
+│ • big_events_radar (beyond 7 days) │
+└────────────────────────────────────┘
+         │
+         ▼
+    dict[str, list[Event]]
+```
+
+### Output Data Structure
+
+```python
+{
+    "movies_this_week": [Event(...), ...],
+    "big_events_radar": [Event(...), ...],
 }
 ```
 
-### Output Formats
-1. **Telegram Message**: Human-readable text with length limits
-2. **JSON Backup**: Machine-readable for historical analysis
-3. **Log Files**: Structured logging for monitoring
+### JSON Export Format
 
-## Error Handling Strategy
-
-### Failure Categories and Responses
-
-#### 1. Network Failures
-- **Detection**: Timeout, connection errors, HTTP status codes
-- **Response**: Exponential backoff retry (max 3 attempts)
-- **Fallback**: Send error notification via Telegram
-
-#### 2. API Schema Changes
-- **Detection**: Missing JSON fields, unexpected data structure, KeyError exceptions
-- **Response**: Graceful degradation, log schema changes, partial data extraction
-- **Notification**: Alert about potential API updates requiring code changes
-
-#### 3. HTTP Request Failures
-- **Detection**: httpx timeout, connection errors, HTTP status codes
-- **Response**: Retry with exponential backoff (recommended enhancement)
-- **Logging**: Detailed error context for debugging
-
-#### 4. Telegram API Failures
-- **Detection**: API error responses, rate limiting
-- **Response**: Retry with backoff, queue message for later
-- **Fallback**: Log message content for manual review
-
-#### 5. Data Validation Failures
-- **Detection**: Empty datasets, malformed data patterns
-- **Response**: Skip invalid entries, continue processing
-- **Reporting**: Include validation summary in logs
-
-### Error Recovery Hierarchy
+```json
+{
+  "movies_this_week": [
+    {
+      "title": "Wicked: Teil 2",
+      "date": "2025-11-22T13:45:00",
+      "venue": "Astor Grand Cinema",
+      "url": "https://hannover.premiumkino.de/",
+      "category": "movie",
+      "metadata": {
+        "duration": 137,
+        "rating": 12,
+        "year": 2025,
+        "language": "Sprache: Englisch"
+      }
+    }
+  ],
+  "big_events_radar": [
+    {
+      "title": "LUCIANO",
+      "date": "2025-11-29T20:00:00",
+      "venue": "ZAG Arena",
+      "url": "https://www.zag-arena-hannover.de/...",
+      "category": "radar",
+      "metadata": {"time": "20:00"}
+    }
+  ]
+}
 ```
-Level 1: Retry with same configuration (immediate)
-Level 2: Retry with backoff (exponential)
-Level 3: Restart component (HTTP client, connection)
-Level 4: Graceful failure with notification
-```
+
+## Error Handling
+
+### Graceful Degradation
+- Individual scraper failures don't crash the workflow
+- Empty results are handled gracefully
+- Network errors logged with context
+
+### Retry Strategy (Future Enhancement)
+- Exponential backoff for transient failures
+- Maximum retry attempts configurable
 
 ## Testing Strategy
 
-### Test Pyramid Structure
+### Test Coverage (26 tests)
 
-#### 1. Unit Tests (70%)
-- **Data Extraction Logic**: Mock httpx responses with representative JSON payloads
-- **Data Formatting**: Input/output validation
-- **Telegram Integration**: API call mocking
-- **Error Handling**: Exception scenarios
+1. **Event Model Tests** (6 tests)
+   - Creation, metadata, date formatting, week detection
 
-#### 2. Integration Tests (20%)
-- **API Integration**: End-to-end flow with recorded API fixtures
-- **Data Parsing**: JSON schema handling and OV filtering
-- **End-to-End Flow**: Complete scraping cycle
-- **Telegram Communication**: Real Telegram bot integration
+2. **Scraper Tests** (7 tests)
+   - Source names, API parsing, OV filtering, empty responses
 
-#### 3. System Tests (10%)
-- **Container Execution**: Docker environment testing
-- **Scheduled Execution**: Cron job simulation
-- **Resource Limits**: Memory and time constraints
-- **Failure Scenarios**: Network interruption testing
+3. **Notifier Tests** (10 tests)
+   - Message formatting, sections, Telegram API, local mode
 
-### Test Data Management
-- **Mock API Payloads**: Captured JSON responses for deterministic tests
-- **Test Fixtures**: Known movie metadata and performance combinations
-- **Environment Isolation**: Separate test database/chat
-- **CI/CD Integration**: Automated test execution
+4. **Integration Tests** (3 tests)
+   - Full workflow with mocked scrapers
 
-## Security Architecture
+### Running Tests
 
-### Threat Mitigation
-
-#### 1. Secret Management
-- **Environment Variables**: All sensitive data in env vars
-- **No Hardcoded Values**: Tokens, URLs, credentials externalized
-- **Access Control**: Principle of least privilege
-- **Audit Trail**: Log access to sensitive operations
-
-#### 2. Container Security
-- **Non-root User**: Limited filesystem permissions
-- **Minimal Base Image**: Reduced attack surface
-- **Dependency Scanning**: Vulnerability assessment
-- **Resource Limits**: CPU/memory constraints
-
-#### 3. Network Security
-- **HTTPS Only**: Encrypted communication
-- **Certificate Validation**: Proper SSL verification
-- **Rate Limiting**: Respect website policies
-- **User Agent Headers**: Standard browser identification for API calls
-
-#### 4. Data Protection
-- **Input Validation**: Sanitize all extracted data
-- **Output Sanitization**: Prevent injection attacks
-- **Log Redaction**: Remove sensitive information from logs
-- **Data Retention**: Limited storage of historical data
-
-## Performance Architecture
-
-### Optimization Strategies
-
-#### 1. Scraping Performance
-- **Efficient API Calls**: Single API request fetches all data (no pagination needed)
-- **In-Memory Processing**: Fast JSON parsing and data transformation
-- **Resource Management**: Efficient HTTP client usage via context managers
-- **Connection Reuse**: HTTP connection pooling via httpx.Client context manager
-
-#### 2. Container Performance
-- **Layer Caching**: Optimize Docker build times
-- **Image Size**: Minimize runtime footprint
-- **Startup Time**: Fast container initialization
-- **Memory Efficiency**: Optimize Python runtime
-
-#### 3. Network Performance
-- **Connection Pooling**: Reuse HTTP connections
-- **Compression**: Enable response compression
-- **Timeout Management**: Appropriate timeout values
-- **Retry Logic**: Intelligent backoff strategies
-
-### Monitoring Metrics
-```
-Performance Indicators:
-├── Execution Time (target: < 5 minutes)
-├── Memory Usage (target: < 512MB)
-├── Success Rate (target: > 95%)
-├── Data Accuracy (target: 100% validation)
-└── Error Recovery Time (target: < 1 minute)
+```bash
+uv run python -m pytest tests/ -v
 ```
 
-## Deployment Architecture
+## Performance
 
-### Coolify Integration
+### Current Metrics
+- **Execution Time**: ~6 seconds (network dependent)
+- **Memory Usage**: < 100MB
+- **API Calls**: 4 total (1 Astor + 3 venues)
 
-#### 1. Resource Configuration
-```
-Service Type: Scheduled Task
-Repository: GitHub (KinoWeek)
-Branch: main
-Schedule: Cron expression (0 20 * * 1)
-Environment: Production
-```
+### Optimizations
+- Single API call for all Astor data
+- Connection reuse via httpx.Client context manager
+- In-memory processing (no database)
 
-#### 2. Environment Variables
-```
-Required:
-├── TELEGRAM_BOT_TOKEN: Bot authentication token
-├── TELEGRAM_CHAT_ID: Target chat identifier
-└── LOG_LEVEL: Logging verbosity (INFO/DEBUG)
+## Security
 
-Optional:
-├── RETRY_ATTEMPTS: Maximum retry count (default: 3)
-├── TIMEOUT_SECONDS: Operation timeout (default: 300)
-└── DRY_RUN: Test mode without sending (default: false)
-```
+### Secrets Management
+- Environment variables for Telegram credentials
+- `.env` file support via python-dotenv
+- No hardcoded secrets
 
-#### 3. Resource Limits
-```
-Memory: 512MB limit
-CPU: 0.5 core limit
-Storage: 1GB ephemeral
-Network: Outbound HTTPS only
-Timeout: 10 minutes execution limit
+### Network Security
+- HTTPS only
+- Standard User-Agent header
+- Timeout configuration (30s)
+
+## Deployment Options
+
+### 1. Local Cron Job
+```bash
+0 9 * * 1 cd /path/to/kinoweek && uv run python -m kinoweek.main
 ```
 
-### Deployment Pipeline
-```
-Git Push → Coolify Webhook → Docker Build → 
-Container Registry → Scheduled Execution → 
-Log Collection → Monitoring Alert
-```
-
-## Monitoring and Observability
-
-### Logging Strategy
-```
-Log Levels:
-├── ERROR: Failures requiring attention
-├── WARN: Unexpected but recoverable situations
-├── INFO: Normal operation milestones
-└── DEBUG: Detailed execution tracing
+### 2. GitHub Actions
+```yaml
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Monday 9 AM UTC
 ```
 
-### Key Metrics
-1. **Business Metrics**
-   - Movies extracted per run
-   - Data accuracy validation
-   - Notification delivery success
+### 3. Container (Docker/Coolify)
+- Scheduled task execution
+- Environment variable injection
 
-2. **Technical Metrics**
-   - Script execution duration
-   - Memory usage patterns
-   - Network request counts
-   - Error rates by category
+## Future Enhancements
 
-3. **Operational Metrics**
-   - Scheduled execution adherence
-   - Container restart frequency
-   - Resource utilization trends
+### Potential Improvements
+1. **Movie Deduplication**: Group showtimes per film
+2. **Ticket Links**: Include URLs in concert output
+3. **Genre Display**: Show movie genres
+4. **Additional Venues**: Easy to add via config
 
-### Alerting Strategy
+### Extension Points
+- New scrapers: Extend `BaseScraper`
+- New notification channels: Add alongside Telegram
+- Database persistence: Add for historical analysis
+
+## Technology Stack
+
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| Language | Python 3.13+ | Modern features, type hints |
+| HTTP Client | httpx | Async-ready, clean API |
+| HTML Parsing | BeautifulSoup4 | Robust HTML extraction |
+| Package Manager | uv | Fast, modern tooling |
+| Testing | pytest | Comprehensive test suite |
+| Linting | ruff | Fast, comprehensive |
+| Type Checking | mypy (strict) | Type safety |
+
+## File Structure
+
 ```
-Alert Conditions:
-├── Script execution failure
-├── Data extraction below threshold
-├── Telegram notification failure
-├── Container resource exhaustion
-└── Scheduled job missed execution
+KinoWeek/
+├── src/kinoweek/
+│   ├── __init__.py      # Package with lazy imports
+│   ├── models.py        # Event dataclass
+│   ├── config.py        # URLs, venues, settings
+│   ├── scrapers.py      # AstorMovieScraper, ConcertVenueScraper
+│   ├── notifier.py      # Format + Telegram + file output
+│   └── main.py          # CLI and orchestration
+├── tests/
+│   └── test_scraper.py  # 26 tests
+├── docs/
+│   └── architecture.md  # This document
+├── output/              # Generated files
+├── pyproject.toml       # Modern Python config
+└── README.md            # Quick start guide
 ```
-
-## Scalability Considerations
-
-### Current Scale (Single Cinema)
-- **Weekly Execution**: One scrape per week
-- **Data Volume**: ~50 movies, ~200 showtimes
-- **Resource Needs**: Minimal (single container)
-
-### Future Expansion Paths
-1. **Multi-Cinema Support**: Add city/cinema parameters
-2. **Increased Frequency**: Daily instead of weekly execution
-3. **Additional Channels**: Email, Slack, webhook notifications
-4. **Historical Analysis**: Database storage for trend analysis
-5. **API Service**: RESTful endpoint for on-demand queries
-
-### Architectural Adaptations
-- **Configuration Management**: External config for multiple sources
-- **Database Integration**: Persistent storage for historical data
-- **Message Queue**: Async processing for multiple notifications
-- **Load Balancing**: Container orchestration for high availability
-
-## Risk Assessment and Mitigation
-
-### High-Risk Areas
-1. **API Schema Changes**: Backend contract shifts may break parsing
-   - **Mitigation**: Schema validation, monitoring alerts, quick updates
-
-2. **Third-party APIs**: Telegram Bot API reliability
-   - **Mitigation**: Retry logic, fallback notifications, API monitoring
-
-3. **Scheduled Execution**: Cron job reliability
-   - **Mitigation**: Health checks, manual trigger capability, logging
-
-4. **Data Accuracy**: Parsing errors or missed content
-   - **Mitigation**: Validation rules, sample comparisons, manual review
-
-### Business Continuity
-- **Backup Communication**: Alternative notification channels
-- **Manual Override**: Direct script execution capability
-- **Data Recovery**: Historical data preservation
-- **Documentation**: Comprehensive troubleshooting guides
-
-## Technology Stack Justification
-
-### Core Choices
-- **Python 3.13+**: Modern features, strong ecosystem, type hints, performance
-- **httpx**: Modern HTTP client with HTTP/2 support, async capability, clean API
-- **Direct API Access**: Backend API discovered, eliminating need for browser automation
-- **GitHub Actions / Coolify**: Flexible deployment options, cron scheduling
-- **Telegram**: Immediate notification, mobile-friendly, reliable Bot API
-- **uv**: Fast, modern Python package installer and environment manager
-
-### Architecture Evolution
-- **Initial Plan**: Playwright-based browser automation for scraping HTML
-- **Current Implementation**: Direct API calls to `backend.premiumkino.de`
-- **Rationale**: API access is faster, more reliable, requires less infrastructure (no headless browser)
-- **Benefits**: Reduced dependencies, faster execution, simpler deployment, easier testing
-
-### Alternative Considerations
-- **Scrapy/Selenium**: Not needed - direct API access available
-- **requests**: Rejected in favor of httpx (modern, better features)
-- **Kubernetes**: Overkill for current scale requirements
-- **Email Notifications**: Less immediate than mobile messaging
-- **Serverless Functions**: Viable option but GitHub Actions simpler for weekly cron
-
-## Implementation Roadmap
-
-### Phase 1: Foundation (Current)
-- Architecture documentation
-- Test suite development
-- Core scraper implementation
-
-### Phase 2: Production Readiness
-- Container optimization
-- Error handling refinement
-- Performance tuning
-
-### Phase 3: Deployment
-- Coolify integration
-- Monitoring setup
-- Documentation completion
-
-### Phase 4: Enhancement
-- Feature additions based on usage
-- Performance optimizations
-- Scalability improvements
 
 ## Conclusion
 
-This architecture provides a robust, maintainable, and scalable foundation for the Astor Kino Notifier system. The design prioritizes reliability, observability, and operational simplicity while ensuring the system can evolve with changing requirements.
+KinoWeek demonstrates a clean, maintainable architecture for a weekly aggregation system:
+- **Modular design** with clear separation of concerns
+- **Type safety** with modern Python features
+- **Comprehensive testing** for reliability
+- **Graceful degradation** for robustness
+- **Simple deployment** with multiple options
 
-The modular approach allows for independent testing and deployment of components, while the comprehensive error handling and monitoring strategies ensure production-grade reliability.
+The stateless design keeps complexity low while delivering a useful weekly digest.
