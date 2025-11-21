@@ -4,12 +4,16 @@
 
 KinoWeek is a production-ready aggregator with a **modular plugin-based architecture**. It currently supports:
 
-| Category | Source | Status |
-|----------|--------|--------|
-| Cinema | Astor Grand Cinema | ✅ Implemented |
-| Concert | ZAG Arena | ✅ Implemented |
-| Concert | Swiss Life Hall | ✅ Implemented |
-| Concert | Capitol Hannover | ✅ Implemented |
+| Category | Source | Status | Integration Method |
+|----------|--------|--------|-------------------|
+| Cinema | Astor Grand Cinema | ✅ Implemented | JSON API |
+| Concert | Béi Chéz Heinz | ✅ Implemented | HTML (div.pane) |
+| Concert | Capitol Hannover | ✅ Implemented | HTML (HC-Kartenleger) |
+| Concert | Faust | ✅ Implemented | HTML (REDAXO CMS) |
+| Concert | MusikZentrum | ✅ Implemented | JSON-LD Schema |
+| Concert | Pavillon | ✅ Implemented | HTML (WordPress) |
+| Concert | Swiss Life Hall | ✅ Implemented | HTML (HC-Kartenleger) |
+| Concert | ZAG Arena | ✅ Implemented | HTML (WPEM plugin) |
 
 The plugin architecture allows adding new sources with **zero code changes** to core modules - just create a new module with the `@register_source` decorator.
 
@@ -132,8 +136,12 @@ class NewVenueSource(BaseSource):
 | ZAG Arena | ✅ Implemented | HTML (WPEM) |
 | Swiss Life Hall | ✅ Implemented | HTML (HC-Kartenleger) |
 | Capitol Hannover | ✅ Implemented | HTML (HC-Kartenleger) |
-| Pavillon Hannover | 📋 Planned | HTML |
-| Musikzentrum | 📋 Planned | HTML |
+| Faust | ✅ Implemented | HTML (REDAXO CMS) |
+| Pavillon | ✅ Implemented | HTML (WordPress) |
+| MusikZentrum | ✅ Implemented | JSON-LD Schema |
+| Béi Chéz Heinz | ✅ Implemented | HTML (custom) |
+| Café Glocksee | 📋 Planned | HTML |
+| Indiego Glocksee | 📋 Planned | HTML |
 
 ### 🎪 Festivals & Special Events
 | Venue | Status | Access Pattern |
@@ -175,7 +183,8 @@ class NewVenueSource(BaseSource):
 
 | Metric | Target | Current |
 |--------|--------|---------|
-| Sources besides movies | 2-3 | ✅ 3 (ZAG, Swiss Life, Capitol) |
+| Sources besides movies | 2-3 | ✅ 7 concert venues |
+| Total events on radar | 20+ | ✅ ~39 events |
 | Uptime across sources | 80%+ | ✅ Monitored via logs |
 | Time to add new venue | < 30 mins | ✅ ~15-30 mins |
 | Tests passing | 100% | ✅ 26/26 tests |
