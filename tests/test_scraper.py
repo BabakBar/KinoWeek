@@ -19,7 +19,6 @@ from kinoweek.notifier import format_message, notify, send_telegram_message
 from kinoweek.scrapers import (
     AstorMovieScraper,
     ConcertVenueScraper,
-    StaatstheaterScraper,
     fetch_all_events,
 )
 
@@ -109,10 +108,8 @@ class TestEventModel:
         assert event_this_week.is_this_week() is True
         assert event_next_month.is_this_week() is False
 
-    def test_event_invalid_category_rejected(self) -> None:
-        """Test that invalid categories are caught by type system."""
-        # With Literal types, invalid categories would be caught by mypy
-        # At runtime, we just verify valid categories work
+    def test_event_valid_categories(self) -> None:
+        """Test that valid categories work correctly."""
         for category in ("movie", "culture", "radar"):
             event = Event(
                 title="Test",
@@ -218,36 +215,6 @@ class TestAstorMovieScraper:
         assert len(result) == 0
 
 
-class TestStaatstheaterScraper:
-    """Tests for the Staatstheater scraper."""
-
-    def test_scraper_source_name(self) -> None:
-        """Test scraper returns correct source name."""
-        scraper = StaatstheaterScraper(
-            start_date=datetime.now(),
-            end_date=datetime.now() + timedelta(days=7),
-        )
-        assert scraper.source_name == "Staatstheater Hannover"
-
-    @patch("kinoweek.scrapers.httpx.Client")
-    def test_fetch_handles_empty_page(self, mock_client: Mock) -> None:
-        """Test that empty page is handled gracefully."""
-        mock_response = Mock()
-        mock_response.text = "<html><body></body></html>"
-        mock_client.return_value.__enter__.return_value.get.return_value = (
-            mock_response
-        )
-
-        scraper = StaatstheaterScraper(
-            start_date=datetime.now(),
-            end_date=datetime.now() + timedelta(days=7),
-        )
-        result = scraper.fetch()
-
-        assert isinstance(result, list)
-        assert len(result) == 0
-
-
 class TestConcertVenueScraper:
     """Tests for the concert venue scraper."""
 
@@ -256,30 +223,32 @@ class TestConcertVenueScraper:
         scraper = ConcertVenueScraper()
         assert scraper.source_name == "Concert Venues"
 
+    def test_scraper_max_events(self) -> None:
+        """Test scraper respects max events limit."""
+        scraper = ConcertVenueScraper(max_events_per_venue=5)
+        assert scraper._max_events == 5
+
 
 class TestFetchAllEvents:
     """Tests for the event aggregation function."""
 
     @patch("kinoweek.scrapers.ConcertVenueScraper.fetch")
-    @patch("kinoweek.scrapers.StaatstheaterScraper.fetch")
     @patch("kinoweek.scrapers.AstorMovieScraper.fetch")
     def test_returns_categorized_dict(
         self,
         mock_astor: Mock,
-        mock_staats: Mock,
         mock_concert: Mock,
     ) -> None:
         """Test that fetch_all_events returns correctly structured data."""
         mock_astor.return_value = []
-        mock_staats.return_value = []
         mock_concert.return_value = []
 
         result = fetch_all_events()
 
         assert "movies_this_week" in result
-        assert "culture_this_week" in result
         assert "big_events_radar" in result
         assert isinstance(result["movies_this_week"], list)
+        assert isinstance(result["big_events_radar"], list)
 
 
 # =============================================================================
@@ -294,7 +263,6 @@ class TestFormatMessage:
         """Test that format_message returns a string."""
         test_data = {
             "movies_this_week": [],
-            "culture_this_week": [],
             "big_events_radar": [],
         }
         result = format_message(test_data)
@@ -304,17 +272,15 @@ class TestFormatMessage:
         """Test that formatted message includes all sections."""
         test_data = {
             "movies_this_week": [],
-            "culture_this_week": [],
             "big_events_radar": [],
         }
         result = format_message(test_data)
 
         assert "Movies" in result
-        assert "Culture" in result
         assert "Radar" in result
 
-    def test_format_message_with_events(self) -> None:
-        """Test formatting with actual events."""
+    def test_format_message_with_movies(self) -> None:
+        """Test formatting with movie events."""
         movie = Event(
             title="Inception",
             date=datetime(2024, 11, 24, 19, 30),
@@ -325,7 +291,6 @@ class TestFormatMessage:
         )
         test_data = {
             "movies_this_week": [movie],
-            "culture_this_week": [],
             "big_events_radar": [],
         }
         result = format_message(test_data)
@@ -334,11 +299,30 @@ class TestFormatMessage:
         assert "2010" in result
         assert "19:30" in result
 
+    def test_format_message_with_concerts(self) -> None:
+        """Test formatting with concert events."""
+        concert = Event(
+            title="Rock Concert",
+            date=datetime(2024, 12, 15, 20, 0),
+            venue="ZAG Arena",
+            url="https://example.com",
+            category="radar",
+            metadata={"time": "20:00"},
+        )
+        test_data = {
+            "movies_this_week": [],
+            "big_events_radar": [concert],
+        }
+        result = format_message(test_data)
+
+        assert "Rock Concert" in result
+        assert "ZAG Arena" in result
+        assert "20:00" in result
+
     def test_format_message_handles_empty_data(self) -> None:
         """Test that empty data is handled gracefully."""
         test_data = {
             "movies_this_week": [],
-            "culture_this_week": [],
             "big_events_radar": [],
         }
         result = format_message(test_data)
@@ -362,7 +346,6 @@ class TestFormatMessage:
         ]
         test_data = {
             "movies_this_week": movies,
-            "culture_this_week": [],
             "big_events_radar": [],
         }
         result = format_message(test_data)
@@ -438,7 +421,6 @@ class TestNotify:
         """Test notify in local mode saves to file."""
         test_data = {
             "movies_this_week": [],
-            "culture_this_week": [],
             "big_events_radar": [],
         }
 
@@ -456,7 +438,6 @@ class TestNotify:
         mock_send.return_value = True
         test_data = {
             "movies_this_week": [],
-            "culture_this_week": [],
             "big_events_radar": [],
         }
 
@@ -489,7 +470,6 @@ class TestIntegration:
 
         mock_fetch.return_value = {
             "movies_this_week": [],
-            "culture_this_week": [],
             "big_events_radar": [],
         }
         mock_notify.return_value = True

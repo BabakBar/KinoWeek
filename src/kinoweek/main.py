@@ -91,7 +91,7 @@ def run(*, local_only: bool = False) -> bool:
     """Execute the complete scraping and notification workflow.
 
     This is the main orchestration function that:
-    1. Fetches events from all three sources
+    1. Fetches events from movies (Astor) and concerts (venues)
     2. Categorizes them into "This Week" and "On The Radar"
     3. Sends a formatted Telegram message (or saves locally)
 
@@ -112,13 +112,11 @@ def run(*, local_only: bool = False) -> bool:
 
         # Log summary
         movies_count = len(events_data.get("movies_this_week", []))
-        culture_count = len(events_data.get("culture_this_week", []))
         radar_count = len(events_data.get("big_events_radar", []))
 
         logger.info("Summary:")
         logger.info("  - Movies (This Week): %d", movies_count)
-        logger.info("  - Culture (This Week): %d", culture_count)
-        logger.info("  - Big Events (Radar): %d", radar_count)
+        logger.info("  - Concerts (On Radar): %d", radar_count)
 
         # Step 2: Send notification or save locally
         logger.info("Sending notification...")

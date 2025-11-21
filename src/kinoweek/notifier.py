@@ -1,9 +1,8 @@
 """Notification module for message formatting and delivery.
 
-Formats events into a structured Telegram message with three sections:
+Formats events into a structured Telegram message with two sections:
 1. "Movies (This Week)" - OV movies at Astor Cinema
-2. "Culture (This Week)" - Opera, ballet, theater events
-3. "On The Radar" - Big upcoming concerts and events
+2. "On The Radar" - Big upcoming concerts and events
 """
 
 from __future__ import annotations
@@ -42,7 +41,6 @@ class EventsData(TypedDict):
     """Structure for categorized event data."""
 
     movies_this_week: list[Event]
-    culture_this_week: list[Event]
     big_events_radar: list[Event]
 
 
@@ -65,10 +63,35 @@ _LANGUAGE_ABBREVIATIONS: dict[str, str] = {
 }
 
 _VENUE_ABBREVIATIONS: dict[str, str] = {
-    "Staatstheater Hannover": "Staatstheater",
-    "ZAG Arena": "ZAG",
-    "Swiss Life Hall": "SLH",
-    "Expo Plaza": "Expo",
+    "ZAG Arena": "ZAG Arena",
+    "Swiss Life Hall": "Swiss Life Hall",
+    "Capitol Hannover": "Capitol",
+}
+
+# German day names for nice formatting
+_GERMAN_DAYS: dict[int, str] = {
+    0: "Mo",
+    1: "Di",
+    2: "Mi",
+    3: "Do",
+    4: "Fr",
+    5: "Sa",
+    6: "So",
+}
+
+_GERMAN_MONTHS: dict[int, str] = {
+    1: "Jan",
+    2: "Feb",
+    3: "Mär",
+    4: "Apr",
+    5: "Mai",
+    6: "Jun",
+    7: "Jul",
+    8: "Aug",
+    9: "Sep",
+    10: "Okt",
+    11: "Nov",
+    12: "Dez",
 }
 
 
@@ -145,6 +168,25 @@ def _format_movie_metadata(event: Event) -> list[str]:
     return parts
 
 
+def _format_concert_date(event: Event) -> str:
+    """Format concert date in a nice, expanded format.
+
+    Args:
+        event: Concert event.
+
+    Returns:
+        Formatted date like "Sa, 29. Nov" or "Fr, 13. Jan 2026".
+    """
+    dt = event.date
+    day_name = _GERMAN_DAYS.get(dt.weekday(), "")
+    month_name = _GERMAN_MONTHS.get(dt.month, "")
+
+    # Include year if not current year
+    if dt.year != datetime.now().year:
+        return f"{day_name}, {dt.day}. {month_name} {dt.year}"
+    return f"{day_name}, {dt.day}. {month_name}"
+
+
 # =============================================================================
 # Message Formatting
 # =============================================================================
@@ -153,8 +195,8 @@ def _format_movie_metadata(event: Event) -> list[str]:
 def format_message(events_data: EventsData) -> str:
     """Format events into a Telegram-ready message.
 
-    Creates a three-section message with movies, culture events,
-    and upcoming big events, formatted with Telegram Markdown.
+    Creates a two-section message with movies and upcoming concerts,
+    formatted with Telegram Markdown.
 
     Args:
         events_data: Dictionary with categorized event lists.
@@ -163,7 +205,6 @@ def format_message(events_data: EventsData) -> str:
         Formatted message string ready for Telegram.
     """
     movies = events_data.get("movies_this_week", [])
-    culture = events_data.get("culture_this_week", [])
     radar = events_data.get("big_events_radar", [])
 
     week_num = datetime.now().isocalendar()[1]
@@ -173,11 +214,7 @@ def format_message(events_data: EventsData) -> str:
     lines.append(_format_movies_section(movies))
     lines.append("")
 
-    # Section 2: Culture
-    lines.append(_format_culture_section(culture))
-    lines.append("")
-
-    # Section 3: Radar
+    # Section 2: Radar (Concerts)
     lines.append(_format_radar_section(radar))
 
     message = "\n".join(lines).strip()
@@ -254,32 +291,8 @@ def _format_movie_entry(event: Event) -> list[str]:
     return lines
 
 
-def _format_culture_section(culture: Sequence[Event]) -> str:
-    """Format the culture section of the message.
-
-    Args:
-        culture: List of culture events.
-
-    Returns:
-        Formatted culture section.
-    """
-    lines: list[str] = ["*Culture (This Week)*"]
-
-    if not culture:
-        lines.append("_No culture events this week_")
-        return "\n".join(lines)
-
-    for event in culture:
-        time_str = event.format_time()
-        venue_short = _abbreviate_venue(event.venue)
-        lines.append(f"  *{event.title}*")
-        lines.append(f"  {time_str} @ {venue_short}")
-
-    return "\n".join(lines)
-
-
 def _format_radar_section(radar: Sequence[Event]) -> str:
-    """Format the radar (big events) section of the message.
+    """Format the radar (concerts/big events) section of the message.
 
     Args:
         radar: List of upcoming big events.
@@ -287,19 +300,40 @@ def _format_radar_section(radar: Sequence[Event]) -> str:
     Returns:
         Formatted radar section.
     """
-    lines: list[str] = ["*On The Radar (Big Events)*"]
+    lines: list[str] = ["*On The Radar*"]
 
     if not radar:
-        lines.append("_No big events on radar_")
+        lines.append("_No upcoming events_")
         return "\n".join(lines)
 
     for event in radar:
-        date_str = event.format_date_long()
-        venue_short = _abbreviate_venue(event.venue)
-        lines.append(f"  *{event.title}*")
-        lines.append(f"  {date_str} @ {venue_short}")
+        lines.extend(_format_concert_entry(event))
 
     return "\n".join(lines)
+
+
+def _format_concert_entry(event: Event) -> list[str]:
+    """Format a single concert entry with expanded date.
+
+    Args:
+        event: Concert event to format.
+
+    Returns:
+        List of lines for this concert entry.
+    """
+    lines: list[str] = []
+
+    # Title
+    lines.append(f"  *{event.title}*")
+
+    # Date and venue on same line
+    date_str = _format_concert_date(event)
+    venue_short = _abbreviate_venue(event.venue)
+    time_str = event.metadata.get("time", "20:00")
+
+    lines.append(f"  {date_str} | {time_str} @ {venue_short}")
+
+    return lines
 
 
 # =============================================================================
@@ -411,10 +445,6 @@ def save_to_file(
             "movies_this_week": [
                 _event_to_dict(e)
                 for e in events_data.get("movies_this_week", [])
-            ],
-            "culture_this_week": [
-                _event_to_dict(e)
-                for e in events_data.get("culture_this_week", [])
             ],
             "big_events_radar": [
                 _event_to_dict(e)
