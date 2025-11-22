@@ -43,13 +43,20 @@
     @apply border-t border-border my-6;
   }
 
-  /* Card hover effect */
+  /* Card hover effect - enhanced */
   .card-hover {
-    @apply transition-colors duration-200;
+    @apply transition-all duration-300 ease-out;
+    transform: translateX(0);
   }
 
   .card-hover:hover {
     @apply bg-bg-secondary;
+    transform: translateX(4px);
+  }
+
+  .card-hover:active {
+    transform: translateX(2px);
+    @apply bg-bg-tertiary;
   }
 
   /* Accent underline */
@@ -72,6 +79,35 @@
     content: '\2192';
     @apply mx-1;
   }
+
+  /* Stagger animation for list items */
+  .stagger-item {
+    animation: fadeSlideIn 0.4s ease-out forwards;
+    opacity: 0;
+  }
+
+  /* Pulse animation for dots */
+  .dot-pulse {
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  /* Section fade in */
+  .section-fade {
+    animation: fadeIn 0.5s ease-out forwards;
+  }
+
+  /* Loading skeleton */
+  .skeleton {
+    @apply bg-bg-secondary rounded animate-pulse;
+  }
+
+  .skeleton-text {
+    @apply h-4 skeleton mb-2;
+  }
+
+  .skeleton-title {
+    @apply h-6 skeleton mb-3 w-3/4;
+  }
 }
 
 @layer utilities {
@@ -89,5 +125,68 @@
   .dot-bg {
     background-image: radial-gradient(circle, #2a2a2a 1px, transparent 1px);
     background-size: 16px 16px;
+  }
+}
+
+/* Keyframe animations */
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Stagger delays for list animations */
+.stagger-item:nth-child(1) { animation-delay: 0ms; }
+.stagger-item:nth-child(2) { animation-delay: 50ms; }
+.stagger-item:nth-child(3) { animation-delay: 100ms; }
+.stagger-item:nth-child(4) { animation-delay: 150ms; }
+.stagger-item:nth-child(5) { animation-delay: 200ms; }
+.stagger-item:nth-child(6) { animation-delay: 250ms; }
+.stagger-item:nth-child(7) { animation-delay: 300ms; }
+.stagger-item:nth-child(8) { animation-delay: 350ms; }
+.stagger-item:nth-child(9) { animation-delay: 400ms; }
+.stagger-item:nth-child(10) { animation-delay: 450ms; }
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .stagger-item,
+  .section-fade,
+  .card-hover {
+    animation: none;
+    transition: none;
+    opacity: 1;
+    transform: none;
   }
 }

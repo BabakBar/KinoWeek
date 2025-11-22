@@ -383,21 +383,107 @@ Instead of sections (Movies / Concerts), present a unified timeline. Scroll = tr
 
 ---
 
-## Next Steps
+## Implementation Status
 
-1. [ ] Set up Astro project structure
-2. [ ] Configure TailwindCSS with design tokens
-3. [ ] Create base layout and typography
-4. [ ] Build Header component (dot-matrix style)
-5. [ ] Build MovieCard component
-6. [ ] Build ConcertCard component
-7. [ ] Build SectionHeader component
-8. [ ] Build Footer component
-9. [ ] Create index page assembling components
-10. [ ] Connect to events.json data
-11. [ ] Test on mobile devices
-12. [ ] Deploy to GitHub Pages
-13. [ ] Integrate into CI/CD pipeline
+### Phase 1: MVP - COMPLETED
+
+1. [x] Set up Astro project structure
+2. [x] Configure TailwindCSS with design tokens
+3. [x] Create base layout and typography
+4. [x] Build Header component (dot-matrix style with pulsing animation)
+5. [x] Build MovieCard component (with accent hover effects)
+6. [x] Build ConcertCard component (with accent hover effects)
+7. [x] Build SectionHeader component
+8. [x] Build DateHeader component
+9. [x] Build Footer component
+10. [x] Create index page assembling components
+11. [x] Add animations and polish (fade-in, stagger, hover states)
+12. [x] Connect to Python data export (`web_events.json`)
+13. [x] Add data loader with mock fallback
+
+### Next Steps
+
+- [ ] Deploy to Coolify
+- [ ] Add Dockerfile for containerized deployment
+- [ ] Set up CI/CD pipeline
+- [ ] Test on real mobile devices
+- [ ] Add PWA manifest (Phase 2)
+
+---
+
+## Data Flow
+
+```
+Python Scraper                    Astro Frontend
+─────────────────                ─────────────────
+
+┌─────────────┐                  ┌─────────────┐
+│  Sources    │                  │  loader.ts  │
+│  (8 venues) │                  │             │
+└──────┬──────┘                  └──────┬──────┘
+       │                                │
+       ▼                                │
+┌─────────────┐                         │
+│ Aggregator  │                         │
+└──────┬──────┘                         │
+       │                                │
+       ▼                                ▼
+┌─────────────┐    reads from    ┌─────────────┐
+│ export_web_ │ ──────────────── │ web_events  │
+│ json()      │                  │ .json       │
+└─────────────┘                  └──────┬──────┘
+                                        │
+                                        ▼
+                                 ┌─────────────┐
+                                 │ index.astro │
+                                 └──────┬──────┘
+                                        │
+                                        ▼
+                                 ┌─────────────┐
+                                 │  Static     │
+                                 │  HTML/CSS   │
+                                 └─────────────┘
+```
+
+### JSON Format (`web_events.json`)
+
+```json
+{
+  "meta": {
+    "week": 47,
+    "year": 2025,
+    "updatedAt": "Mon 18 Nov 09:00"
+  },
+  "movies": [
+    {
+      "day": "FRI",
+      "date": "21.11",
+      "movies": [
+        {
+          "title": "Chainsaw Man: Reze Arc",
+          "year": 2025,
+          "time": "22:50",
+          "duration": "1h41m",
+          "language": "JP",
+          "subtitles": "DE",
+          "rating": "FSK16",
+          "url": "https://..."
+        }
+      ]
+    }
+  ],
+  "concerts": [
+    {
+      "title": "Luciano",
+      "date": "29 Nov",
+      "day": "Sa",
+      "time": "20:00",
+      "venue": "ZAG Arena",
+      "url": "https://..."
+    }
+  ]
+}
+```
 
 ---
 
@@ -418,5 +504,5 @@ Instead of sections (Movies / Concerts), present a unified timeline. Scroll = tr
 
 ---
 
-*Last updated: 2025-11-21*
-*Status: Phase 1 implementation in progress*
+*Last updated: 2025-11-22*
+*Status: Phase 1 MVP complete - Ready for deployment*

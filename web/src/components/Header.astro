@@ -7,14 +7,22 @@ interface Props {
 const { week, year } = Astro.props;
 ---
 
-<header class="mb-8">
+<header class="mb-8 section-fade">
   <!-- Logo with dot-matrix style -->
-  <div class="flex items-center gap-2 mb-2">
-    <span class="text-accent text-lg">&#9642;&#9642;&#9642;</span>
+  <div class="flex items-center justify-center gap-2 mb-2">
+    <span class="dots text-accent text-lg" aria-hidden="true">
+      <span class="dot">&#9642;</span>
+      <span class="dot">&#9642;</span>
+      <span class="dot">&#9642;</span>
+    </span>
     <h1 class="font-display text-xl font-bold tracking-dot uppercase text-text-primary">
       boringhannover
     </h1>
-    <span class="text-accent text-lg">&#9642;&#9642;&#9642;</span>
+    <span class="dots text-accent text-lg" aria-hidden="true">
+      <span class="dot">&#9642;</span>
+      <span class="dot">&#9642;</span>
+      <span class="dot">&#9642;</span>
+    </span>
   </div>
 
   <!-- Week info -->
@@ -26,5 +34,30 @@ const { week, year } = Astro.props;
 <style>
   header {
     text-align: center;
+  }
+
+  .dots {
+    display: inline-flex;
+    gap: 2px;
+  }
+
+  .dot {
+    display: inline-block;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  .dot:nth-child(1) { animation-delay: 0ms; }
+  .dot:nth-child(2) { animation-delay: 200ms; }
+  .dot:nth-child(3) { animation-delay: 400ms; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dot {
+      animation: none;
+    }
   }
 </style>

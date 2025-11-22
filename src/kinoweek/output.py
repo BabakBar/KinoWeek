@@ -19,6 +19,7 @@ from kinoweek.exporters import (
     export_markdown_digest,
     export_movies_csv,
     export_movies_grouped_csv,
+    export_web_json,
 )
 
 if TYPE_CHECKING:
@@ -186,6 +187,7 @@ class OutputManager:
         export_movies_grouped_csv(grouped_movies, self.output_path, week_num)
         export_concerts_csv(concerts, self.output_path, week_num)
         export_enhanced_json(movies, concerts, grouped_movies, self.output_path, week_num, year)
+        export_web_json(movies, concerts, self.output_path, week_num, year)
         export_markdown_digest(grouped_movies, concerts, self.output_path, week_num, year)
         archive_weekly_data(movies, concerts, self.output_path, week_num, year)
 
@@ -194,6 +196,7 @@ class OutputManager:
             "movies_grouped_csv": self.output_path / "movies_grouped.csv",
             "concerts_csv": self.output_path / "concerts.csv",
             "json": self.output_path / "events.json",
+            "web_json": self.output_path / "web_events.json",
             "markdown": self.output_path / "weekly_digest.md",
             "archive": self.output_path / "archive" / f"{year}-W{week_num:02d}.json",
         }
