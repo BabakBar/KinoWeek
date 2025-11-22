@@ -187,6 +187,7 @@ FOOTER
 ```
 Framework:    Astro (static site generator)
 Styling:      TailwindCSS + custom CSS
+Package Manager: Bun
 Fonts:        Space Mono (Google Fonts) + Inter (system/Google)
 Build:        Python exports JSON → Astro builds HTML
 Deploy:       Hetzner + Coolify (Docker)
@@ -199,8 +200,8 @@ Domain:       boringhannover.de (Cloudflare DNS)
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
 │   Python    │     │    Astro    │     │   Coolify   │
 │  Scraper    │────▶│   Build     │────▶│   Deploy    │
-│             │     │             │     │             │
-│ events.json │     │ index.html  │     │  Live Site  │
+│             │     │  (bun run  │     │             │
+│ events.json │     │   build)    │     │  Live Site  │
 └─────────────┘     └─────────────┘     └─────────────┘
      │                                        │
      │         Weekly (Monday 9 AM)           │

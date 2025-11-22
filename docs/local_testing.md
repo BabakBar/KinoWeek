@@ -57,24 +57,24 @@ The frontend is located in the `web/` directory and uses Astro + TailwindCSS.
 ### 1. Install Dependencies
 ```bash
 cd web
-npm install
+bun install
 ```
 
 ### 2. Run Development Server
 ```bash
-npm run dev
+bun run dev
 # Opens at http://localhost:4321
 ```
 
 ### 3. Build for Production
 ```bash
-npm run build
+bun run build
 # Outputs to web/dist/
 ```
 
 ### 4. Preview Production Build
 ```bash
-npm run preview
+bun run preview
 ```
 
 ## Full Local Workflow
@@ -86,7 +86,7 @@ To test the complete flow (scraper → frontend):
 PYTHONPATH=src uv run python -m kinoweek.main --local
 
 # 2. Start the frontend (reads from output/web_events.json)
-cd web && npm run dev
+cd web && bun run dev
 ```
 
 The frontend will automatically load data from `../output/web_events.json` if it exists, otherwise it falls back to mock data.
@@ -101,5 +101,5 @@ The frontend will automatically load data from `../output/web_events.json` if it
 ### Build fails with type errors
 ```bash
 # Check TypeScript types
-cd web && npx astro check
+cd web && bun run astro check
 ```
