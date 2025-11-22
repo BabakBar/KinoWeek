@@ -66,7 +66,32 @@ const langDisplay = language && subtitles
 </a>
 
 <style>
+  .movie-card {
+    position: relative;
+  }
+
+  .movie-card::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 2px;
+    height: 0;
+    background: theme('colors.accent.DEFAULT');
+    transition: height 0.2s ease-out;
+    border-radius: 1px;
+  }
+
+  .movie-card:hover::before {
+    height: 60%;
+  }
+
   .movie-card:hover h3 {
     color: theme('colors.accent.DEFAULT');
+  }
+
+  .movie-card h3 {
+    transition: color 0.2s ease-out;
   }
 </style>

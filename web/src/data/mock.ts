@@ -1,40 +1,8 @@
-// Mock data for development - will be replaced by events.json from Python scraper
+// Mock data for development - will be replaced by web_events.json from Python scraper
+import type { EventData } from './types';
 
-export interface Movie {
-  title: string;
-  year?: number;
-  time: string;
-  duration?: string;
-  language?: string;
-  subtitles?: string;
-  rating?: string;
-  url?: string;
-}
-
-export interface MovieDay {
-  day: string;
-  date: string;
-  movies: Movie[];
-}
-
-export interface Concert {
-  title: string;
-  date: string;
-  day: string;
-  time?: string;
-  venue: string;
-  url?: string;
-}
-
-export interface EventData {
-  meta: {
-    week: number;
-    year: number;
-    updatedAt: string;
-  };
-  movies: MovieDay[];
-  concerts: Concert[];
-}
+// Re-export types for convenience
+export type { EventData, Movie, MovieDay, Concert, EventMeta } from './types';
 
 // Mock data matching the planned UI
 export const mockData: EventData = {

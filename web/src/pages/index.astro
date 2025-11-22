@@ -7,10 +7,11 @@ import MovieCard from '../components/MovieCard.astro';
 import ConcertCard from '../components/ConcertCard.astro';
 import Footer from '../components/Footer.astro';
 
-// Import mock data (will be replaced with events.json)
-import { mockData } from '../data/mock';
+// Load event data (from web_events.json or fallback to mock)
+import { loadEventData } from '../data/loader';
 
-const { meta, movies, concerts } = mockData;
+const eventData = loadEventData();
+const { meta, movies, concerts } = eventData;
 ---
 
 <Base title="boringhannover - What's on in Hannover">

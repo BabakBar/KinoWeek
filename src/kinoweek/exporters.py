@@ -36,6 +36,7 @@ __all__ = [
     "export_concerts_csv",
     # JSON/Markdown/Archive exports
     "export_enhanced_json",
+    "export_web_json",
     "export_markdown_digest",
     "archive_weekly_data",
 ]
@@ -152,6 +153,124 @@ def export_enhanced_json(
     )
 
     logger.info("Exported enhanced JSON to %s", json_path)
+
+
+# =============================================================================
+# Web Frontend JSON Export
+# =============================================================================
+
+# Day name abbreviations for frontend
+_DAY_ABBREVS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+_GERMAN_DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+_GERMAN_MONTHS = ["", "Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]
+
+
+def export_web_json(
+    movies: Sequence[Event],
+    concerts: Sequence[Event],
+    output_path: Path,
+    week_num: int,
+    year: int,
+) -> None:
+    """Export JSON specifically formatted for the web frontend.
+
+    Creates a structure optimized for the boringhannover frontend:
+    - Movies grouped by date with display-ready formatting
+    - Concerts with German date formatting
+    - All text pre-formatted for display
+
+    Args:
+        movies: List of movie events.
+        concerts: List of concert events.
+        output_path: Path to output directory.
+        week_num: Current week number.
+        year: Current year.
+    """
+    json_path = output_path / "web_events.json"
+
+    # Group movies by date
+    movies_by_date: dict[str, list[dict]] = {}
+    for event in movies:
+        date_key = event.date.strftime("%Y-%m-%d")
+        if date_key not in movies_by_date:
+            movies_by_date[date_key] = []
+
+        # Format language display (JP→DE style)
+        language = str(event.metadata.get("language", ""))
+        lang_parts = []
+        if "Sprache:" in language:
+            lang = language.split("Sprache:")[-1].strip().split(",")[0].strip()
+            lang_abbrevs = {
+                "Englisch": "EN", "Japanisch": "JP", "Deutsch": "DE",
+                "Französisch": "FR", "Italienisch": "IT", "Spanisch": "ES",
+                "Russisch": "RU", "Koreanisch": "KR", "Chinesisch": "ZH",
+            }
+            lang_parts.append(lang_abbrevs.get(lang, lang[:2].upper()))
+        if "Untertitel:" in language:
+            lang_parts.append("DE")  # Subtitles are always German
+
+        lang_display = "→".join(lang_parts) if len(lang_parts) == 2 else (lang_parts[0] if lang_parts else "")
+
+        movies_by_date[date_key].append({
+            "title": event.title,
+            "year": event.metadata.get("year"),
+            "time": event.date.strftime("%H:%M"),
+            "duration": _format_duration(int(event.metadata.get("duration", 0))),
+            "language": lang_parts[0] if lang_parts else None,
+            "subtitles": "DE" if len(lang_parts) == 2 else None,
+            "rating": f"FSK{event.metadata.get('rating')}" if event.metadata.get("rating") else None,
+            "url": event.url,
+        })
+
+    # Convert to frontend format (sorted by date)
+    movies_list = []
+    for date_key in sorted(movies_by_date.keys()):
+        dt = datetime.fromisoformat(date_key)
+        movies_list.append({
+            "day": _DAY_ABBREVS[dt.weekday()],
+            "date": dt.strftime("%d.%m"),
+            "movies": sorted(movies_by_date[date_key], key=lambda m: m["time"]),
+        })
+
+    # Format concerts
+    concerts_list = []
+    for event in sorted(concerts, key=lambda e: e.date):
+        dt = event.date
+        day_name = _GERMAN_DAYS[dt.weekday()]
+        month_name = _GERMAN_MONTHS[dt.month]
+
+        # Format date like "29 Nov" or "28 Mar 2026"
+        if dt.year != year:
+            date_display = f"{dt.day} {month_name} {dt.year}"
+        else:
+            date_display = f"{dt.day} {month_name}"
+
+        concerts_list.append({
+            "title": event.title,
+            "date": date_display,
+            "day": day_name,
+            "time": event.metadata.get("time", "20:00"),
+            "venue": event.venue,
+            "url": event.url,
+        })
+
+    # Build final structure
+    data = {
+        "meta": {
+            "week": week_num,
+            "year": year,
+            "updatedAt": datetime.now().strftime("%a %d %b %H:%M"),
+        },
+        "movies": movies_list,
+        "concerts": concerts_list,
+    }
+
+    json_path.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    logger.info("Exported web frontend JSON to %s", json_path)
 
 
 # =============================================================================
